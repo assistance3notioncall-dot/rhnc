@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
@@ -16,6 +15,17 @@ type User = {
   department_id: string | null; hire_date: string | null;
 };
 type Dept = { id: string; name: string };
+// Mêmes champs que la fiche de l'écran Salariés, pour que les deux formulaires
+// produisent exactement la même chose.
+const FICHE_VIDE = {
+  matricule: "", username: "", first_name: "", last_name: "", role_key: "brute",
+  department_id: "", manager_id: "", job_title: "", hire_date: "", contract_type: "CDI",
+  contract_end: "", trial_end: "", cin: "", phone: "", email: "", birth_date: "",
+  family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+};
+const COMP_VIDE = { base_salary: 0, attendance_bonus: 0, transport_allowance: 0, meal_allowance: 0, cnss_number: "", rib: "" };
+type Fiche = typeof FICHE_VIDE;
+type Comp = typeof COMP_VIDE;
 type Acces = { name: string; username?: string; temp_password?: string };
 type Audit = { id: number; actor_id: string | null; table_name: string; row_id: string | null; action: string; at: string };
 
@@ -29,7 +39,6 @@ const SOUS_TITRE: Record<string, string> = {
 
 export default function Admin() {
   const { me, isSuper } = useSession();
-  const router = useRouter();
   const [tab, setTab] = useState("users");
   const [mods, setMods] = useState<Mod[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -38,6 +47,8 @@ export default function Admin() {
   const [depts, setDepts] = useState<Dept[]>([]);
   const [acces, setAcces] = useState<Acces | null>(null);
   const [resetFor, setResetFor] = useState<User | null>(null);
+  const [accesPour, setAccesPour] = useState<User | null>(null);
+  const [ajout, setAjout] = useState(false);
   const [audit, setAudit] = useState<Audit[] | null>(null);
   const [fRole, setFRole] = useState("tous");
   const [q, setQ] = useState("");
@@ -119,13 +130,52 @@ export default function Admin() {
     return data;
   }
 
-  async function creerAcces(u: User) {
+  // `password` facultatif : saisi, il est imposé ; laissé vide, la fonction en
+  // génère un. C'est le même paramètre que pour une reprise de fichier en lot.
+  async function creerAcces(u: User, password?: string) {
     await run(async () => {
-      const data = await invoquer("create-access", { profile_ids: [u.id] });
+      const data = await invoquer("create-access",
+        password ? { profile_ids: [u.id], password } : { profile_ids: [u.id] });
       const r = (data?.results ?? [])[0] as (Acces & { error?: string }) | undefined;
       if (!r) throw new Error("Réponse inattendue du serveur");
       if (r.error) throw new Error(r.error);
       setAcces(r);
+      setAccesPour(null);
+      await load();
+    });
+  }
+
+  /** Crée la fiche, sa rémunération et son accès en une seule fois. Avant, il
+   *  fallait créer la fiche ici puis revenir cliquer 🔑 sur sa ligne. */
+  async function ajouterSalarie(f: Fiche, c: Comp, password: string) {
+    const vide = (v: unknown) => (v === "" ? null : v);
+    await run(async () => {
+      const cree = must(await supabase.from("profiles").insert({
+        ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, vide(v)])),
+        company_id: me!.company_id,
+        username: f.username.trim().toLowerCase(),
+        email: f.email.trim().toLowerCase() || null,
+        children_count: Number(f.children_count) || 0,
+        job_title: f.job_title.trim() || roles.find((r) => r.key === f.role_key)?.label || null,
+        account_status: "sans_compte",
+      }).select("id").single()) as { id: string };
+
+      must(await supabase.from("employee_compensation").upsert({
+        profile_id: cree.id,
+        base_salary: Number(c.base_salary) || 0,
+        attendance_bonus: Number(c.attendance_bonus) || 0,
+        transport_allowance: Number(c.transport_allowance) || 0,
+        meal_allowance: Number(c.meal_allowance) || 0,
+        cnss_number: vide(c.cnss_number.trim()),
+        rib: vide(c.rib.trim()),
+      }));
+
+      const data = await invoquer("create-access",
+        password ? { profile_ids: [cree.id], password } : { profile_ids: [cree.id] });
+      const r = (data?.results ?? [])[0] as (Acces & { error?: string }) | undefined;
+      if (r?.error) throw new Error(`Fiche créée, mais l'accès a échoué : ${r.error}`);
+      if (r) setAcces(r);
+      setAjout(false);
       await load();
     });
   }
@@ -151,9 +201,7 @@ export default function Admin() {
   return (
     <Guard module="admin">
       <PageHead title="Utilisateurs & rôles" sub={SOUS_TITRE[tab]}>
-        {/* La saisie d'une fiche vit dans l'écran Salariés : on y renvoie plutôt
-            que de dupliquer le formulaire et ses règles de validation. */}
-        {tab === "users" && isSuper && <button className="btn-pri" onClick={() => router.push("/salaries")}>+ Ajouter un salarié</button>}
+        {tab === "users" && isSuper && <button className="btn-pri" onClick={() => setAjout(true)}>+ Ajouter un salarié</button>}
         {tab === "roles" && isSuper && <button className="btn-pri" onClick={() => setCreating(true)}>+ Nouveau rôle</button>}
       </PageHead>
 
@@ -214,7 +262,7 @@ export default function Admin() {
                   <td className="text-right">
                     {u.account_status === "sans_compte" ? (
                       <button className="btn btn-sm" disabled={busy || !isSuper} title="Créer l'accès"
-                        onClick={() => creerAcces(u)}>🔑</button>
+                        onClick={() => setAccesPour(u)}>🔑</button>
                     ) : (
                       // reset-access est réservée au super admin et refuse votre
                       // propre compte : le bouton reflète ces deux règles.
@@ -295,34 +343,172 @@ export default function Admin() {
       {creating && <NewRole roles={editable} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />}
       {acces && <AccesCree acces={acces} onClose={() => setAcces(null)} />}
       {resetFor && (
-        <NouveauMotDePasse salarie={resetFor} busy={busy}
+        <NouveauMotDePasse mode="reset" salarie={resetFor} busy={busy}
           onClose={() => setResetFor(null)}
           onValider={(mdp) => reinitialiser(resetFor, mdp)} />
+      )}
+      {accesPour && (
+        <NouveauMotDePasse mode="creation" salarie={accesPour} busy={busy}
+          onClose={() => setAccesPour(null)}
+          onValider={(mdp) => creerAcces(accesPour, mdp || undefined)} />
+      )}
+      {ajout && (
+        <AjouterSalarie roles={roles} depts={depts} gens={users} busy={busy} isSuper={isSuper}
+          onClose={() => setAjout(false)} onValider={ajouterSalarie} />
       )}
     </Guard>
   );
 }
 
-/** Le super admin choisit le mot de passe. Double saisie, parce qu'il le
- *  dictera ensuite au salarié : une faute de frappe non détectée ici le
- *  laisserait dehors sans qu'on comprenne pourquoi. */
+/** Création d'un salarié : fiche complète, rémunération et accès en une seule
+ *  fenêtre. Le mot de passe est facultatif — laissé vide, il est généré. */
+function AjouterSalarie(
+  { roles, depts, gens, busy, isSuper, onClose, onValider }:
+  {
+    roles: Role[]; depts: Dept[]; gens: User[]; busy: boolean; isSuper: boolean;
+    onClose: () => void; onValider: (f: Fiche, c: Comp, mdp: string) => void;
+  },
+) {
+  const choisissables = roles.filter((r) => isSuper || !(r.locked || r.kind === "rh" || r.kind === "admin"));
+  const [f, setF] = useState<Fiche>({ ...FICHE_VIDE, role_key: choisissables[0]?.key ?? "brute" });
+  const [c, setC] = useState<Comp>(COMP_VIDE);
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  type Ch = React.ChangeEvent<HTMLInputElement | HTMLSelectElement>;
+  const set = (k: keyof Fiche) => (e: Ch) => setF({ ...f, [k]: e.target.value });
+  const setc = (k: keyof Comp) => (e: Ch) => setC({ ...c, [k]: e.target.value });
+
+  // Même règle que l'écran Salariés : l'identifiant sert à se connecter.
+  const identifiant_ok = /^[a-z0-9.]+$/.test(f.username.trim().toLowerCase());
+  const mdp_vide = p1.length === 0 && p2.length === 0;
+  const trop_court = p1.length > 0 && p1.length < 8;
+  const differents = p2.length > 0 && p1 !== p2;
+  const valide = identifiant_ok && f.first_name.trim() !== ""
+    && (mdp_vide || (p1.length >= 8 && p1 === p2));
+
+  return (
+    <Modal title="Ajouter un salarié" onClose={onClose} wide>
+      <h3 className="mb-2">Identité &amp; accès</h3>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="Identifiant de connexion *">
+          <input className="inp" value={f.username} onChange={set("username")} placeholder="ex. ayoub" />
+        </Field>
+        <Field label="Mot de passe (facultatif)">
+          <input className="inp" type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} placeholder="vide = généré" />
+        </Field>
+        <Field label="Confirmer">
+          <input className="inp" type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} />
+        </Field>
+        <Field label="Matricule"><input className="inp" value={f.matricule} onChange={set("matricule")} /></Field>
+        <Field label="Prénom *"><input className="inp" value={f.first_name} onChange={set("first_name")} /></Field>
+        <Field label="Nom"><input className="inp" value={f.last_name} onChange={set("last_name")} /></Field>
+        <Field label="Rôle *">
+          <select className="inp" value={f.role_key} onChange={set("role_key")}>
+            {choisissables.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Section">
+          <select className="inp" value={f.department_id} onChange={set("department_id")}>
+            <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Responsable">
+          <select className="inp" value={f.manager_id} onChange={set("manager_id")}>
+            <option value="">—</option>
+            {gens.filter((g) => g.status === "actif").map((g) => <option key={g.id} value={g.id}>{fullName(g)}</option>)}
+          </select>
+        </Field>
+        <Field label="Poste"><input className="inp" value={f.job_title} onChange={set("job_title")} placeholder="par défaut : le libellé du rôle" /></Field>
+        <Field label="Statut">
+          <select className="inp" value={f.status} onChange={set("status")}>
+            <option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="sorti">Sorti</option>
+          </select>
+        </Field>
+      </div>
+
+      <h3 className="mb-2 mt-2">Contrat</h3>
+      <div className="grid gap-x-3 sm:grid-cols-4">
+        <Field label="Type">
+          <select className="inp" value={f.contract_type} onChange={set("contract_type")}>
+            {["CDI", "CDD", "ANAPEC", "stage", "interim"].map((x) => <option key={x}>{x}</option>)}
+          </select>
+        </Field>
+        <Field label="Embauche"><input type="date" className="inp" value={f.hire_date} onChange={set("hire_date")} /></Field>
+        <Field label="Fin d&apos;essai"><input type="date" className="inp" value={f.trial_end} onChange={set("trial_end")} /></Field>
+        <Field label="Fin de contrat"><input type="date" className="inp" value={f.contract_end} onChange={set("contract_end")} /></Field>
+      </div>
+
+      <h3 className="mb-2 mt-2">Coordonnées &amp; famille</h3>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="CIN"><input className="inp" value={f.cin} onChange={set("cin")} /></Field>
+        <Field label="Téléphone"><input className="inp" value={f.phone} onChange={set("phone")} /></Field>
+        <Field label="E-mail (facultatif)">
+          <input className="inp" value={f.email} onChange={set("email")} placeholder="vide si la personne n&apos;en a pas" />
+        </Field>
+        <Field label="Date de naissance"><input type="date" className="inp" value={f.birth_date} onChange={set("birth_date")} /></Field>
+        <Field label="Situation familiale">
+          <select className="inp" value={f.family_status} onChange={set("family_status")}>
+            <option value="">—</option><option>Célibataire</option><option>Marié(e)</option><option>Divorcé(e)</option><option>Veuf(ve)</option>
+          </select>
+        </Field>
+        <Field label="Enfants à charge"><input type="number" min={0} className="inp" value={f.children_count} onChange={set("children_count")} /></Field>
+        <Field label="Adresse" className="sm:col-span-2"><input className="inp" value={f.address} onChange={set("address")} /></Field>
+        <Field label="Contact d&apos;urgence"><input className="inp" value={f.emergency_contact} onChange={set("emergency_contact")} /></Field>
+      </div>
+
+      <h3 className="mb-2 mt-2">Rémunération</h3>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="Salaire de base (DH brut)"><input type="number" className="inp" value={c.base_salary} onChange={setc("base_salary")} /></Field>
+        <Field label="Prime d&apos;assiduité (DH)"><input type="number" className="inp" value={c.attendance_bonus} onChange={setc("attendance_bonus")} /></Field>
+        <Field label="Indemnité transport"><input type="number" className="inp" value={c.transport_allowance} onChange={setc("transport_allowance")} /></Field>
+        <Field label="Indemnité panier"><input type="number" className="inp" value={c.meal_allowance} onChange={setc("meal_allowance")} /></Field>
+        <Field label="N° CNSS"><input className="inp" value={c.cnss_number} onChange={setc("cnss_number")} /></Field>
+        <Field label="RIB"><input className="inp" value={c.rib} onChange={setc("rib")} /></Field>
+      </div>
+
+      {f.username.trim() !== "" && !identifiant_ok && (
+        <div className="mb-3 rounded-lg bg-err-l px-3 py-2 text-err">
+          L&apos;identifiant ne peut contenir que des minuscules, des chiffres et des points.
+        </div>
+      )}
+      {trop_court && <div className="mb-3 rounded-lg bg-err-l px-3 py-2 text-err">8 caractères minimum</div>}
+      {differents && <div className="mb-3 rounded-lg bg-err-l px-3 py-2 text-err">Les deux mots de passe ne correspondent pas</div>}
+
+      <div className="flex justify-end gap-2">
+        <button className="btn" onClick={onClose}>Annuler</button>
+        <button className="btn-pri" disabled={busy || !valide} onClick={() => onValider(f, c, p1)}>
+          {mdp_vide ? "Créer et générer l’accès" : "Créer et ouvrir l’accès"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Saisie du mot de passe par l'administrateur.
+ *  - `reset`    : obligatoire, on remplace un mot de passe existant.
+ *  - `creation` : facultatif, laisser vide fait générer un mot de passe.
+ *  Double saisie dans les deux cas : l'administrateur va dicter ce mot de passe
+ *  au salarié, et une faute de frappe non détectée ici le laisserait dehors. */
 function NouveauMotDePasse(
-  { salarie, busy, onClose, onValider }:
-  { salarie: User; busy: boolean; onClose: () => void; onValider: (mdp: string) => void },
+  { mode, salarie, busy, onClose, onValider }:
+  { mode: "reset" | "creation"; salarie: User; busy: boolean; onClose: () => void; onValider: (mdp: string) => void },
 ) {
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
+  const creation = mode === "creation";
+  const vide = p1.length === 0 && p2.length === 0;
   const trop_court = p1.length > 0 && p1.length < 8;
   const differents = p2.length > 0 && p1 !== p2;
-  const valide = p1.length >= 8 && p1 === p2;
+  const valide = (creation && vide) || (p1.length >= 8 && p1 === p2);
   return (
-    <Modal title={`Nouveau mot de passe — ${fullName(salarie)}`} onClose={onClose}>
+    <Modal title={creation ? `Ouvrir l'accès — ${fullName(salarie)}` : `Nouveau mot de passe — ${fullName(salarie)}`} onClose={onClose}>
       <p className="mut mb-4 text-[12.5px]">
-        Identifiant : <b>{salarie.username}</b>. Son mot de passe actuel cessera de fonctionner.
-        Ses sessions déjà ouvertes restent valides jusqu&apos;à une heure : pour couper l&apos;accès
-        tout de suite, bloquez le compte avec l&apos;interrupteur Statut.
+        Identifiant : <b>{salarie.username}</b>.{" "}
+        {creation
+          ? "Choisissez un mot de passe, ou laissez les deux champs vides pour en faire générer un."
+          : "Son mot de passe actuel cessera de fonctionner. Ses sessions déjà ouvertes restent valides jusqu'à une heure : pour couper l'accès tout de suite, bloquez le compte avec l'interrupteur Statut."}
       </p>
-      <Field label="Nouveau mot de passe">
+      <Field label={creation ? "Mot de passe (facultatif)" : "Nouveau mot de passe"}>
         <input className="inp" type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} />
       </Field>
       <Field label="Confirmer">
@@ -332,7 +518,9 @@ function NouveauMotDePasse(
       {differents && <div className="mb-3 rounded-lg bg-err-l px-3 py-2 text-err">Les deux mots de passe ne correspondent pas</div>}
       <div className="flex justify-end gap-2">
         <button className="btn" onClick={onClose}>Annuler</button>
-        <button className="btn-pri" disabled={busy || !valide} onClick={() => onValider(p1)}>Enregistrer</button>
+        <button className="btn-pri" disabled={busy || !valide} onClick={() => onValider(p1)}>
+          {creation ? (vide ? "Générer et ouvrir l'accès" : "Ouvrir l'accès") : "Enregistrer"}
+        </button>
       </div>
     </Modal>
   );
