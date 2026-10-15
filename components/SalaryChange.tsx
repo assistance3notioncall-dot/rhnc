@@ -18,7 +18,7 @@ export function SalaryChangeModal({ person, current, onClose, onDone }: {
   return (
     <Modal title={`Salaire de base — ${person.name}`} onClose={onClose}>
       {current != null && <p className="mb-3">Salaire actuel : <b>{dh(current)}</b></p>}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-x-3 sm:grid-cols-2">
         <Field label="Nouveau salaire (DH brut)"><input type="number" min={1} className="inp" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
         <Field label="À partir du mois"><input type="month" className="inp" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
       </div>

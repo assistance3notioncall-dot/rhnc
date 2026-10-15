@@ -82,19 +82,19 @@ export default function Parametres() {
         <div className="card">
           {canEdit && <div className="mb-4 flex flex-wrap gap-2">
             <input type="date" className="inp w-auto" value={newHol.day} onChange={(e) => setNewHol({ ...newHol, day: e.target.value })} />
-            <input className="inp max-w-xs" placeholder="Libellé" value={newHol.label} onChange={(e) => setNewHol({ ...newHol, label: e.target.value })} />
+            <input className="inp sm:max-w-xs" placeholder="Libellé" value={newHol.label} onChange={(e) => setNewHol({ ...newHol, label: e.target.value })} />
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={newHol.is_religious} onChange={(e) => setNewHol({ ...newHol, is_religious: e.target.checked })} /> Religieux (à confirmer)</label>
             <button className="btn-pri" disabled={busy || !newHol.day || !newHol.label} onClick={() => run(async () => {
               must(await supabase.from("holidays").insert({ company_id: me!.company_id, ...newHol, confirmed: !newHol.is_religious })); setNewHol({ day: "", label: "", is_religious: false }); await load();
             }, "Jour férié ajouté")}>Ajouter</button>
           </div>}
-          <table className="tbl"><tbody>{hols.map((h) => (
+          <div className="overflow-x-auto"><table className="tbl"><tbody>{hols.map((h) => (
             <tr key={h.id}><td className="w-32">{dfr(h.day)}</td><td className="font-medium">{h.label}</td>
               <td>{h.is_religious && (h.confirmed ? <span className="badge bg-ok-l text-ok">confirmé</span> : <span className="badge bg-warn-l text-warn">à confirmer</span>)}</td>
               <td className="whitespace-nowrap text-right">{canEdit && <>
                 {h.is_religious && !h.confirmed && <button className="btn btn-sm" onClick={() => run(async () => { must(await supabase.from("holidays").update({ confirmed: true }).eq("id", h.id)); await load(); }, "Confirmé")}>Confirmer</button>}
                 <button className="btn-no btn-sm ml-1" onClick={() => run(async () => { must(await supabase.from("holidays").delete().eq("id", h.id)); await load(); }, "Supprimé")}>✕</button>
-              </>}</td></tr>))}</tbody></table>
+              </>}</td></tr>))}</tbody></table></div>
         </div>
       )}
 

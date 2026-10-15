@@ -44,9 +44,9 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-2 sm:p-4" onMouseDown={onClose}>
       <div
-        className={`card max-h-[90vh] w-full overflow-auto ${wide ? "max-w-4xl" : "max-w-lg"}`}
+        className={`card max-h-[92dvh] w-full overflow-auto ${wide ? "max-w-4xl" : "max-w-lg"}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -93,7 +93,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2">
+      <div className="fixed inset-x-4 bottom-4 z-60 flex flex-col gap-2 sm:left-auto sm:max-w-sm">
         {items.map((t) => (
           <div key={t.id} className={`rounded-lg px-4 py-3 text-white shadow-lg ${t.tone === "ok" ? "bg-slate-900" : "bg-err"}`}>
             {t.text}

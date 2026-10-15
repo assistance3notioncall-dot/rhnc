@@ -113,7 +113,7 @@ export default function Pointage() {
             </select>
           </Field>
           <Tabs value={form.kind ?? "retard"} onChange={(k) => setForm({ ...form, kind: k })} tabs={Object.entries(KLABEL).map(([key, label]) => ({ key, label }))} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-x-3 sm:grid-cols-2">
             <Field label="Date"><input type="date" className="inp" max={ymd(new Date())} value={form.event_date ?? ""} onChange={(e) => setForm({ ...form, event_date: e.target.value })} /></Field>
             {form.kind === "absence" ? (
               <Field label="Durée"><select className="inp" value={form.days ?? 1} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })}>

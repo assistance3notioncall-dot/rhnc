@@ -28,6 +28,7 @@ type Fiche = typeof FICHE_VIDE;
 type Comp = typeof COMP_VIDE;
 type Acces = { name: string; username?: string; temp_password?: string };
 type Audit = { id: number; actor_id: string | null; table_name: string; row_id: string | null; action: string; at: string };
+type Demande = { id: number; profile_id: string; created_at: string };
 
 const KIND: Record<string, string> = { salarie: "Salarié", manager: "Manager (voit son équipe)", rh: "RH (voit tout)", admin: "Admin" };
 const ACTION: Record<string, string> = { INSERT: "Création", UPDATE: "Modification", DELETE: "Suppression" };
@@ -53,9 +54,15 @@ export default function Admin() {
   const [fRole, setFRole] = useState("tous");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
+  const [demandes, setDemandes] = useState<Demande[]>([]);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
+    // Demandes « mot de passe oublié » : la RLS ne les montre qu'au super admin,
+    // les autres reçoivent une liste vide et le bloc ne s'affiche pas.
+    supabase.from("password_reset_requests").select("id,profile_id,created_at")
+      .eq("status", "en_attente").order("created_at")
+      .then(({ data }) => setDemandes((data as Demande[]) ?? []));
     const [{ data: m }, { data: r }, { data: p }, { data: e }, { data: d }] = await Promise.all([
       supabase.from("app_modules").select("*").order("sort"),
       supabase.from("app_roles").select("*").order("created_at"),
@@ -184,7 +191,17 @@ export default function Admin() {
     await run(async () => {
       await invoquer("reset-access", { profile_id: u.id, password });
       setResetFor(null);
+      // reset-access a clos la demande éventuelle : on rafraîchit la liste.
+      setDemandes((ds) => ds.filter((d) => d.profile_id !== u.id));
     }, `Mot de passe de ${fullName(u)} modifié`);
+  }
+
+  async function ignorer(d: Demande) {
+    await run(async () => {
+      must(await supabase.from("password_reset_requests")
+        .update({ status: "ignoree", handled_at: new Date().toISOString(), handled_by: me!.id }).eq("id", d.id));
+      setDemandes((ds) => ds.filter((x) => x.id !== d.id));
+    }, "Demande ignorée");
   }
 
   const get = (r: string, m: string) => perms.find((p) => p.role_key === r && p.module_key === m);
@@ -222,6 +239,30 @@ export default function Admin() {
 
       {tab === "users" && (
         <>
+          {demandes.length > 0 && (
+            <div className="card mb-4 border-warn/40 bg-warn-l/40 p-0">
+              <div className="border-b border-line px-4 py-3">
+                <h2>Mots de passe oubliés ({demandes.length})</h2>
+                <p className="mut mt-1 text-[12.5px]">Ces salariés ont demandé un nouveau mot de passe depuis l&apos;écran de connexion. Ils devront le changer à leur prochaine connexion.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="tbl"><tbody>{demandes.map((d) => {
+                  const u = users.find((x) => x.id === d.profile_id);
+                  return (
+                    <tr key={d.id}>
+                      <td className="font-medium">{u ? fullName(u) : "—"}</td>
+                      <td className="mut">{u?.username ?? ""}</td>
+                      <td className="mut whitespace-nowrap">{dtfr(d.created_at)}</td>
+                      <td className="whitespace-nowrap text-right">
+                        <button className="btn-pri btn-sm" disabled={busy || !u || u.id === me?.id} onClick={() => u && setResetFor(u)}>Réinitialiser</button>
+                        <button className="btn btn-sm ml-1" disabled={busy} onClick={() => ignorer(d)}>Ignorer</button>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody></table>
+              </div>
+            </div>
+          )}
           <Tabs value={fRole} onChange={setFRole} tabs={[
             { key: "tous", label: `Tous (${users.length})` },
             ...roles.map((r) => ({ key: r.key, label: `${r.label} (${counts[r.key] ?? 0})` })),
@@ -530,7 +571,7 @@ function Interrupteur({ on, disabled, onClick, title }: { on: boolean; disabled?
   return (
     <button type="button" role="switch" aria-checked={on} title={title} disabled={disabled} onClick={onClick}
       className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${on ? "bg-pri" : "bg-[#cbd5e1]"}`}>
-      <span className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow transition-all ${on ? "left-[25px]" : "left-[3px]"}`} />
+      <span className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-all ${on ? "left-[25px]" : "left-[3px]"}`} />
     </button>
   );
 }
@@ -566,7 +607,7 @@ function NewRole({ roles, onClose, onDone }: { roles: Role[]; onClose: () => voi
     <Modal title="Nouveau rôle" onClose={onClose}>
       <Field label="Nom du rôle"><input className="inp" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ex. Superviseur qualité" /></Field>
       <Field label="Copier les droits de"><select className="inp" value={from} onChange={(e) => setFrom(e.target.value)}>{roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}</select></Field>
-      <Field label="Couleur"><input type="color" className="h-10 w-20 rounded border border-line" value={color} onChange={(e) => setColor(e.target.value)} /></Field>
+      <Field label="Couleur"><input type="color" className="h-10 w-20 rounded-sm border border-line" value={color} onChange={(e) => setColor(e.target.value)} /></Field>
       <p className="mut mb-3 text-[12.5px]">Code : <code>{key || "—"}</code>. Le niveau d&apos;accès aux données (salarié / manager / RH) est hérité du rôle copié.</p>
       <div className="flex justify-end"><button className="btn-pri" disabled={busy || !key} onClick={() => run(async () => {
         must(await supabase.rpc("create_role", { p_key: key, p_label: label, p_copy_from: from, p_color: color })); onDone();

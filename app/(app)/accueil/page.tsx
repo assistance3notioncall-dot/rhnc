@@ -61,7 +61,7 @@ export default function Accueil() {
         <div className="card">
           <div className="mb-3 flex items-center justify-between"><h2>Mes dernières demandes</h2><Link className="text-pri" href="/demandes">Tout voir →</Link></div>
           {reqs.length === 0 ? <p className="mut">Aucune demande pour l&apos;instant.</p> : (
-            <table className="tbl"><tbody>
+            <div className="overflow-x-auto"><table className="tbl"><tbody>
               {reqs.map((r) => (
                 <tr key={r.id}>
                   <td className="font-medium">{r.ref ?? "Brouillon"}</td>
@@ -70,7 +70,7 @@ export default function Accueil() {
                   <td><Badge status={r.status} /></td>
                 </tr>
               ))}
-            </tbody></table>
+            </tbody></table></div>
           )}
         </div>
         <div className="card">

@@ -1,31 +1,124 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-pri: #2563eb;
+  --color-pri-d: #1d4ed8;
+  --color-pri-l: #eaf1ff;
+
+  --color-bg: #f4f6fb;
+  --color-line: #e3e8f0;
+  --color-mut: #64748b;
+  --color-fg: #0f172a;
+
+  --color-ok: #15803d;
+  --color-ok-l: #dcfce7;
+
+  --color-warn: #b45309;
+  --color-warn-l: #fef3c7;
+
+  --color-err: #b91c1c;
+  --color-err-l: #fee2e2;
+
+  --color-gray2: #475569;
+  --color-gray2-l: #eef2f6;
+
+  --color-vio: #7c3aed;
+  --color-vio-l: #ede9fe;
+
+  --color-teal2: #0f766e;
+  --color-teal2-l: #ccfbf1;
+
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility card {
+  @apply bg-white border border-line rounded-xl p-[18px] shadow-[0_1px_2px_rgba(15,23,42,.05),0_4px_14px_rgba(15,23,42,.04)];
+}
+
+@utility inp {
+  @apply w-full rounded-[9px] border border-line bg-white px-3 py-2.5 focus:border-pri focus:outline-solid focus:outline-2 focus:outline-pri-l;
+}
+
+@utility lbl {
+  @apply text-[12.5px] font-semibold text-gray2 mb-1.5 block;
+}
+
+@utility btn {
+  @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-line bg-white px-3.5 py-2 font-medium hover:bg-gray2-l disabled:opacity-45 disabled:cursor-not-allowed;
+}
+
+@utility btn-pri {
+  @apply btn border-pri bg-pri text-white hover:bg-pri-d;
+}
+
+@utility btn-ok {
+  @apply btn border-ok bg-ok text-white hover:opacity-90;
+}
+
+@utility btn-no {
+  @apply btn text-err border-red-200 hover:bg-err-l;
+}
+
+@utility btn-sm {
+  @apply px-2.5 py-1.5 text-[12.5px];
+}
+
+@utility tbl {
+  @apply w-full border-collapse text-[13.5px];
+  & th {
+    @apply text-left text-[12px] font-semibold uppercase tracking-wide text-mut border-b border-line px-2 py-2 sm:px-3 sm:py-2.5 bg-[#fafbfd] whitespace-nowrap;
+  }
+  & td {
+    @apply border-b border-line px-2 py-2 sm:px-3 sm:py-2.5 align-middle;
+  }
+  & tr:hover td {
+    @apply bg-[#fafbfd];
+  }
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold;
+}
+
+@utility mut {
+  @apply text-mut;
+}
+
+@utility kpi {
+  @apply text-[26px] font-bold leading-none;
+}
+
+@utility chip {
+  @apply rounded-full border border-line bg-white px-3 py-1.5 text-[13px] cursor-pointer;
+}
+
+@utility chip-on {
+  @apply chip border-pri bg-pri-l text-pri-d font-semibold;
+}
 
 @layer base {
   body { @apply bg-bg text-fg text-[14px] leading-normal antialiased; }
-  h1 { @apply text-[22px] font-bold leading-tight; }
+  h1 { @apply text-[19px] sm:text-[22px] font-bold leading-tight; }
   h2 { @apply text-base font-semibold leading-tight; }
   h3 { @apply text-sm font-semibold; }
-}
-@layer components {
-  .card { @apply bg-white border border-line rounded-xl p-[18px] shadow-[0_1px_2px_rgba(15,23,42,.05),0_4px_14px_rgba(15,23,42,.04)]; }
-  .inp { @apply w-full rounded-[9px] border border-line bg-white px-3 py-2.5 focus:border-pri focus:outline focus:outline-2 focus:outline-pri-l; }
-  .lbl { @apply text-[12.5px] font-semibold text-gray2 mb-1.5 block; }
-  .btn { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-line bg-white px-3.5 py-2 font-medium hover:bg-gray2-l disabled:opacity-45 disabled:cursor-not-allowed; }
-  .btn-pri { @apply btn border-pri bg-pri text-white hover:bg-pri-d; }
-  .btn-ok { @apply btn border-ok bg-ok text-white hover:opacity-90; }
-  .btn-no { @apply btn text-err border-red-200 hover:bg-err-l; }
-  .btn-sm { @apply px-2.5 py-1.5 text-[12.5px]; }
-  .tbl { @apply w-full border-collapse text-[13.5px]; }
-  .tbl th { @apply text-left text-[12px] font-semibold uppercase tracking-wide text-mut border-b border-line px-3 py-2.5 bg-[#fafbfd]; }
-  .tbl td { @apply border-b border-line px-3 py-2.5 align-middle; }
-  .tbl tr:hover td { @apply bg-[#fafbfd]; }
-  .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold; }
-  .mut { @apply text-mut; }
-  .kpi { @apply text-[26px] font-bold leading-none; }
-  .chip { @apply rounded-full border border-line bg-white px-3 py-1.5 text-[13px] cursor-pointer; }
-  .chip-on { @apply chip border-pri bg-pri-l text-pri-d font-semibold; }
 }
 @media print {
   aside, header, .no-print { display: none !important; }

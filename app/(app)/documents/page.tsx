@@ -105,7 +105,7 @@ export default function Documents() {
 
       {view && (
         <Modal title={view.title} onClose={() => setView(null)} wide>
-          <div id="print-doc" className="prose max-w-none rounded-lg border border-line p-8" dangerouslySetInnerHTML={{ __html: view.content_html ?? "" }} />
+          <div id="print-doc" className="prose max-w-none rounded-lg border border-line p-4 sm:p-8" dangerouslySetInnerHTML={{ __html: view.content_html ?? "" }} />
           <div className="no-print mt-3 flex justify-end"><button className="btn-pri" onClick={() => printHtml(view.title, view.content_html ?? "")}>Imprimer / PDF</button></div>
         </Modal>
       )}

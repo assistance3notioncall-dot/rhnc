@@ -2,7 +2,8 @@
 //
 // Pose le mot de passe choisi par le super admin sur le compte d'un salarié
 // qui a oublié le sien. Rien n'est généré : c'est l'admin qui saisit, et la
-// réponse ne renvoie pas le mot de passe.
+// réponse ne renvoie pas le mot de passe. Le salarié devra le changer à sa
+// prochaine connexion, et sa demande « mot de passe oublié » est close.
 //
 // Réservée au super admin — pas au rôle RH, contrairement à `create-access` :
 // ouvrir un accès à quelqu'un qui n'en avait pas et reprendre la main sur un
@@ -74,8 +75,24 @@ export default {
       return Response.json({ error: "Ce salarié n'a pas encore d'accès" }, { status: 400 });
     }
 
-    const { error } = await admin.auth.admin.updateUserById(fiche.id, { password });
+    // L'admin connaît ce mot de passe : le salarié doit le remplacer à sa
+    // prochaine connexion. On repart de l'app_metadata actuel pour ne pas
+    // écraser les autres clés (provider…).
+    const { data: actuel, error: errLecture } = await admin.auth.admin.getUserById(fiche.id);
+    if (errLecture || !actuel?.user) {
+      return Response.json({ error: errLecture?.message ?? "Compte introuvable" }, { status: 400 });
+    }
+    const { error } = await admin.auth.admin.updateUserById(fiche.id, {
+      password,
+      app_metadata: { ...(actuel.user.app_metadata ?? {}), must_change_password: true },
+    });
     if (error) return Response.json({ error: error.message }, { status: 400 });
+
+    // Demande « mot de passe oublié » éventuelle : traitée. Un échec ici ne
+    // doit pas faire croire que le mot de passe n'a pas changé.
+    await admin.from("password_reset_requests")
+      .update({ status: "traitee", handled_at: new Date().toISOString(), handled_by: moi.user.id })
+      .eq("profile_id", fiche.id).eq("status", "en_attente");
 
     // Le mot de passe n'est pas renvoyé : l'admin vient de le saisir, et le
     // réémettre dans une réponse HTTP ne ferait que l'exposer davantage.

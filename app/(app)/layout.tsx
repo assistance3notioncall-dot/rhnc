@@ -102,8 +102,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[240px_minmax(0,1fr)]">
-      <aside className={`${menu ? "fixed inset-0 z-40 flex" : "hidden"} flex-col gap-4 overflow-y-auto border-r border-line bg-white px-3 py-[18px] md:sticky md:top-0 md:flex md:h-screen`}>
+    <div className="min-h-screen md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
+      <aside className={`${menu ? "fixed inset-0 z-40 flex" : "hidden"} max-md:w-full flex-col gap-4 overflow-y-auto border-r border-line bg-white px-3 py-[18px] md:sticky md:top-0 md:flex md:h-screen`}>
         <div className="flex items-center justify-between px-2">
           <Logo />
           <button className="btn btn-sm md:hidden" onClick={() => setMenu(false)}>✕</button>
@@ -115,20 +115,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-white px-4 py-3 md:px-6">
+        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-white px-3 py-2.5 sm:px-4 md:px-6 md:py-3">
           <button className="btn btn-sm md:hidden" onClick={() => setMenu(true)}>☰</button>
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
             <div className="relative">
               <button className="relative grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-line bg-white" onClick={() => setOpen(!open)} aria-label="Notifications">
                 🔔{unread > 0 && <b className="absolute right-[7px] top-[6px] h-2 w-2 rounded-full bg-err" />}
               </button>
               {open && (
-                <div className="card absolute right-0 top-11 z-20 w-80 p-0">
+                <div className="card fixed inset-x-3 top-14 z-20 p-0 sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-80">
                   <div className="flex items-center justify-between border-b border-line px-4 py-3">
                     <h3>Notifications</h3>
                     {unread > 0 && <button className="text-[12.5px] text-pri" onClick={markAll}>Tout marquer lu</button>}
                   </div>
-                  <div className="max-h-96 overflow-auto">
+                  <div className="max-h-[70dvh] overflow-auto sm:max-h-96">
                     {notifs.length === 0 && <div className="mut p-4">Rien de nouveau.</div>}
                     {notifs.map((n) => (
                       <Link key={n.id} href={n.link ?? "#"} onClick={() => setOpen(false)} className={`block border-b border-line px-4 py-3 hover:bg-gray2-l ${n.read_at ? "" : "bg-pri-l/40"}`}>
@@ -142,10 +142,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )}
             </div>
             <div className="grid h-[34px] w-[34px] place-items-center rounded-full bg-pri-l text-[12.5px] font-bold text-pri-d">{initials(me)}</div>
-            <button className="btn btn-sm" onClick={async () => { await signOut(); router.replace("/login"); }}>Déconnexion</button>
+            <button className="btn btn-sm" onClick={async () => { await signOut(); router.replace("/login"); }} aria-label="Déconnexion"><span className="sm:hidden">⎋</span><span className="hidden sm:inline">Déconnexion</span></button>
           </div>
         </header>
-        <main className="w-full max-w-[1240px] p-4 md:p-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1240px] p-3 sm:p-4 md:p-6 2xl:max-w-[1440px] 2xl:p-8">{children}</main>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ function Bars({ data, color = "#2563eb", fmt = (n: number) => num(n, 1) }: { dat
   return (
     <div className="space-y-2">
       {data.map(([k, v]) => (
-        <div key={k} className="grid grid-cols-[140px_minmax(0,1fr)_80px] items-center gap-2 text-[13px]">
+        <div key={k} className="grid grid-cols-[96px_minmax(0,1fr)_64px] items-center sm:grid-cols-[140px_minmax(0,1fr)_80px] gap-2 text-[13px]">
           <span className="truncate">{k}</span>
           <div className="h-2.5 rounded-full bg-gray2-l"><div className="h-2.5 rounded-full" style={{ width: `${(v / max) * 100}%`, background: color }} /></div>
           <span className="text-right font-semibold">{fmt(v)}</span>

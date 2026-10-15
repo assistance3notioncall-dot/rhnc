@@ -67,13 +67,13 @@ export default function Salaries() {
         {canEdit && <button className="btn-pri" onClick={() => setEdit("new")}>+ Nouvelle fiche</button>}
       </PageHead>
       <div className="card mb-4 flex flex-wrap items-center gap-2 p-3">
-        <input className="inp max-w-xs" placeholder="Rechercher (nom, identifiant, matricule)…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="inp sm:max-w-xs" placeholder="Rechercher (nom, identifiant, matricule)…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="inp w-auto" value={fRole} onChange={(e) => setFRole(e.target.value)}>
           <option value="">Tous les rôles</option>{roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
         <Tabs value={fAcc} onChange={setFAcc} tabs={[{ key: "tous", label: "Tous" }, { key: "sans_compte", label: "Sans accès" }, { key: "actif", label: "Accès actif" }, { key: "bloque", label: "Bloqués" }]} />
         {canEdit && (
-          <div className="ml-auto flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:ml-auto">
             {sel.length > 0 && <button className="btn-pri" disabled={busy} onClick={() => createAccess(sel)}>Créer l&apos;accès ({sel.length})</button>}
             {sel.length === 0 && withoutAccess.length > 0 && <button className="btn" disabled={busy} onClick={() => confirm(`Créer l'accès pour ${withoutAccess.length} salarié(s) ?`) && createAccess(withoutAccess.map((r) => r.id))}>Créer tous les accès manquants ({withoutAccess.length})</button>}
           </div>
@@ -223,7 +223,7 @@ function CredsModal({ creds, onClose }: { creds: Cred[]; onClose: () => void }) 
           <thead><tr><th>Salarié</th><th>Identifiant</th><th>Mot de passe provisoire</th></tr></thead>
           <tbody>{creds.map((c, i) => (
             <tr key={i}><td>{c.name}</td><td>{c.username}</td>
-              <td>{c.temp_password ? <code className="rounded bg-gray2-l px-2 py-0.5 font-mono">{c.temp_password}</code> : <span className="text-err">{c.error}</span>}</td></tr>
+              <td>{c.temp_password ? <code className="rounded-sm bg-gray2-l px-2 py-0.5 font-mono">{c.temp_password}</code> : <span className="text-err">{c.error}</span>}</td></tr>
           ))}</tbody>
         </table>
       </div>

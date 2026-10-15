@@ -172,7 +172,7 @@ function NewRequest({ kind: initial, types, tpls, onClose, onDone }: {
               {types.map((t) => <option key={t.id} value={t.id}>{t.label}{t.default_days ? ` (${t.default_days} j)` : ""}</option>)}
             </select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-x-3 sm:grid-cols-2">
             <Field label="Du"><input type="date" className="inp" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
             <Field label="Au"><input type="date" className="inp" value={end} min={start} onChange={(e) => setEnd(e.target.value)} /></Field>
           </div>

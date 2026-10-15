@@ -70,7 +70,7 @@ export default function Calendrier() {
                   <div className="text-[12px] font-semibold">{d.getDate()}</div>
                   {h && <div className="truncate text-[11px] text-warn" title={h.label}>{h.label}{h.confirmed ? "" : " *"}</div>}
                   {!sunday && list.slice(0, 3).map((a) => (
-                    <div key={a.id} className="mt-0.5 truncate rounded px-1 text-[11px]" style={{ background: a.color + "55" }} title={`${a.first_name} ${a.last_name} · ${a.type_code}`}>
+                    <div key={a.id} className="mt-0.5 truncate rounded-sm px-1 text-[11px]" style={{ background: a.color + "55" }} title={`${a.first_name} ${a.last_name} · ${a.type_code}`}>
                       {a.first_name} {a.last_name?.[0] ?? ""}.
                     </div>
                   ))}
