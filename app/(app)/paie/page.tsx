@@ -8,7 +8,7 @@ import { PayslipView, type Slip } from "@/components/Payslip";
 import { dh, downloadCSV, fullName, monthLabel, monthStart, num } from "@/lib/format";
 import { printHtml } from "@/lib/print";
 
-type Period = { id: string; month: string; status: string; computed_at: string | null; validated_at: string | null };
+type Period = { id: string; month: string; status: string; computed_at: string | null; validated_at: string | null; working_days: number | null };
 type Person = { id: string; first_name: string; last_name: string; matricule: string | null };
 type Input = { id: number; profile_id: string; code: string; label: string; kind: string; quantity: number | null; amount: number | null; cotisable: boolean; imposable: boolean };
 
@@ -17,8 +17,8 @@ const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; coti
   HS50: { label: "Heures sup. +50 %", kind: "gain", qty: true },
   HS100: { label: "Heures sup. +100 %", kind: "gain", qty: true },
   ABS_NP: { label: "Absence non payée (jours)", kind: "gain", qty: true },
-  PRIME: { label: "Prime exceptionnelle", kind: "gain" },
-  AVANCE: { label: "Remboursement avance", kind: "retenue", cotisable: false, imposable: false },
+  PRIME: { label: "Prime & autres (performance)", kind: "gain" },
+  AVANCE: { label: "Avance sur salaire", kind: "retenue", cotisable: false, imposable: false },
   RETENUE: { label: "Retenue diverse", kind: "retenue", cotisable: false, imposable: false },
 };
 
@@ -34,6 +34,8 @@ export default function Paie() {
   const [view, setView] = useState<Slip | null>(null);
   const [addInput, setAddInput] = useState(false);
   const [newMonth, setNewMonth] = useState(monthStart().slice(0, 7));
+  const [newDays, setNewDays] = useState("");
+  const [days, setDays] = useState("");
   const { busy, run } = useAction();
 
   const loadPeriods = useCallback(async () => {
@@ -52,6 +54,7 @@ export default function Paie() {
   }, [cur]);
   useEffect(() => { loadPeriods(); supabase.from("profiles").select("id,first_name,last_name,matricule").order("first_name").then(({ data }) => setPeople((data as Person[]) ?? [])); }, [loadPeriods]);
   useEffect(() => { loadPeriod(); }, [loadPeriod]);
+  useEffect(() => { setDays(cur?.working_days != null ? String(cur.working_days) : ""); }, [cur]);
 
   const name = (id: string) => fullName(people.find((p) => p.id === id));
   const open = cur && ["ouverte", "calculee"].includes(cur.status);
@@ -62,24 +65,41 @@ export default function Paie() {
     || Number(a.pay_mode === "rdv") - Number(b.pay_mode === "rdv")
     || Number(b.net_pay) - Number(a.net_pay)
     || name(a.profile_id).localeCompare(name(b.profile_id)));
+  const metaSum = (k: "reste_a_prendre" | "especes" | "advances") => slips.reduce((a, s) => a + Number(s.meta?.[k] ?? 0), 0);
+  const autoDays = slips.find((s) => s.meta?.working_days != null)?.meta?.working_days;
 
   return (
     <Guard module="paie">
-      <PageHead title="Paie" sub="Barèmes Maroc 2026 (CNSS, AMO, IR, frais pro) — à faire valider par votre comptable.">
+      <PageHead title="Paie" sub="Agents : palier selon RDV / jour ouvrable + assiduité + challenge · Staff : salaire de base + 150 DH par RDV OK — CNSS selon le mode de chaque salarié.">
         <select className="inp w-auto" value={cur?.id ?? ""} onChange={(e) => setCur(periods.find((p) => p.id === e.target.value) ?? null)}>
           {periods.length === 0 && <option value="">Aucune période</option>}
           {periods.map((p) => <option key={p.id} value={p.id}>{monthLabel(p.month)}</option>)}
         </select>
         {canEdit && (<>
           <input type="month" className="inp w-auto" value={newMonth} onChange={(e) => setNewMonth(e.target.value)} />
+          <input type="number" min={1} max={31} className="inp w-28" placeholder="Jours ouvr." title="Jours ouvrables du mois (vide = lundi→vendredi hors fériés)"
+            value={newDays} onChange={(e) => setNewDays(e.target.value)} />
           <button className="btn" disabled={busy} onClick={() => run(async () => {
-            must(await supabase.from("payroll_periods").insert({ company_id: me!.company_id, month: newMonth + "-01" })); await loadPeriods();
+            must(await supabase.from("payroll_periods").insert({ company_id: me!.company_id, month: newMonth + "-01", working_days: newDays ? Number(newDays) : null }));
+            setNewDays(""); await loadPeriods();
           }, "Période ouverte")}>Ouvrir le mois</button>
         </>)}
       </PageHead>
       {!cur ? <div className="card"><Empty>Ouvrez un mois de paie pour commencer.</Empty></div> : (<>
         <div className="card mb-4 flex flex-wrap items-center gap-3">
           <h2 className="capitalize">{monthLabel(cur.month)}</h2><Badge status={cur.status} />
+          <label className="flex items-center gap-2 text-[13px]">
+            <span className="mut">Jours ouvrables</span>
+            {canEdit && open ? (<>
+              <input type="number" min={1} max={31} className="inp w-20 py-1.5" placeholder={autoDays != null ? String(autoDays) : "auto"}
+                value={days} onChange={(e) => setDays(e.target.value)} />
+              {(days || null) !== (cur.working_days != null ? String(cur.working_days) : null) && (
+                <button className="btn btn-sm" disabled={busy} onClick={() => run(async () => {
+                  must(await supabase.from("payroll_periods").update({ working_days: days ? Number(days) : null }).eq("id", cur.id));
+                  await loadPeriods();
+                }, "Jours ouvrables enregistrés — recalculez la paie")}>Enregistrer</button>)}
+            </>) : <b>{cur.working_days ?? autoDays ?? "—"}</b>}
+          </label>
           <div className="ml-auto flex flex-wrap gap-2">
             {canEdit && open && <button className="btn-pri" disabled={busy} onClick={() => run(async () => {
               const n = must(await supabase.rpc("compute_payroll", { p_period: cur.id })); await loadPeriods(); await loadPeriod(); return n;
@@ -88,27 +108,36 @@ export default function Paie() {
               must(await supabase.rpc("validate_payroll", { p_period: cur.id })); await loadPeriods();
             }, "Paie validée — bulletins publiés")}>Valider & publier</button>}
             <button className="btn" disabled={!slips.length} onClick={() => downloadCSV(`paie-${cur.month}.csv`, ordered.map((s) => ({
-              matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id), base: s.base_salary, brut: s.gross,
-              cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, retenues: s.deductions, net: s.net_pay, charges_patronales: s.employer_charges, cout_total: s.employer_cost,
+              matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id),
+              tranche: s.pay_mode === "rdv" ? s.meta?.step_label ?? "" : "Salaire fixe", rdv_comptes: s.meta?.rdv_counted ?? "", ratio: s.meta?.ratio ?? "",
+              salaire: s.meta?.salary ?? s.base_salary, assiduite: s.meta?.assiduite ?? "", challenge: s.meta?.challenge ?? "", brut: s.gross,
+              cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, challenges_verses: s.meta?.challenge_paid ?? 0, avances: s.meta?.advances ?? 0,
+              reste_a_prendre: s.meta?.reste_a_prendre ?? s.net_pay, especes: s.meta?.especes ?? 0, verse: s.net_pay,
+              charges_patronales: s.employer_charges, cout_total: s.employer_cost,
             })))}>Journal de paie (CSV)</button>
           </div>
         </div>
         <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi label="Masse salariale brute" value={dh(sum("gross"))} />
-          <Kpi label="Net à verser" value={dh(sum("net_pay"))} tone="text-pri-d" />
-          <Kpi label="Charges patronales" value={dh(sum("employer_charges"))} />
+          <Kpi label="Reste à prendre (virements)" value={dh(metaSum("reste_a_prendre"))} tone="text-pri-d" />
+          <Kpi label="Espèces (challenges)" value={dh(metaSum("especes"))} hint={`Avances : ${dh(metaSum("advances"))}`} />
           <Kpi label="Coût total employeur" value={dh(sum("employer_cost"))} hint={`${slips.length} bulletin(s)`} />
         </div>
         <Tabs value={tab} onChange={setTab} tabs={[{ key: "bulletins", label: "Bulletins" }, { key: "variables", label: `Éléments variables (${inputs.length})` }]} />
         <div className="card overflow-x-auto p-0">
           {tab === "bulletins" ? (slips.length === 0 ? <Empty>Cliquez sur « Calculer la paie ».</Empty> : (
             <table className="tbl">
-              <thead><tr><th>Salarié</th><th className="text-right">Base</th><th className="text-right">Brut</th><th className="text-right">CNSS+AMO</th><th className="text-right">IR</th><th className="text-right">Retenues</th><th className="text-right">Net</th><th /></tr></thead>
+              <thead><tr><th>Salarié</th><th>Tranche</th><th className="text-right">Brut</th><th className="text-right">Part sal.</th><th className="text-right">Chall. versés</th><th className="text-right">Avances</th><th className="text-right">Reste à prendre</th><th className="text-right">Versé</th><th /></tr></thead>
               <tbody>{ordered.map((s) => (
                 <tr key={s.id}>
-                  <td className="font-medium">{name(s.profile_id)}</td><td className="text-right">{num(s.base_salary, 2)}</td><td className="text-right">{num(s.gross, 2)}</td>
-                  <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee), 2)}</td><td className="text-right">{num(s.ir, 2)}</td>
-                  <td className="text-right">{num(s.deductions, 2)}</td><td className="text-right font-semibold">{num(s.net_pay, 2)}</td>
+                  <td className="font-medium">{name(s.profile_id)}</td>
+                  <td className="whitespace-nowrap">{s.pay_mode === "rdv"
+                    ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <span className="mut"> · {num(s.meta.ratio, 2)}/j</span>}</>
+                    : <span className="mut">Salaire fixe{(s.meta?.rdv_ok ?? 0) > 0 ? ` + ${s.meta?.rdv_ok} RDV OK` : ""}</span>}</td>
+                  <td className="text-right">{num(s.gross, 2)}</td>
+                  <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee) + Number(s.ir), 2)}</td>
+                  <td className="text-right">{num(s.meta?.challenge_paid ?? 0, 2)}</td><td className="text-right">{num(s.meta?.advances ?? 0, 2)}</td>
+                  <td className="text-right font-semibold">{num(s.meta?.reste_a_prendre ?? s.net_pay, 2)}</td><td className="text-right">{num(s.net_pay, 2)}</td>
                   <td className="text-right"><button className="btn btn-sm" onClick={() => setView(s)}>Bulletin</button></td>
                 </tr>))}</tbody>
             </table>
