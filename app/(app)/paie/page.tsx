@@ -45,7 +45,7 @@ export default function Paie() {
   const loadPeriod = useCallback(async () => {
     if (!cur) { setSlips([]); setInputs([]); return; }
     const [{ data: s }, { data: i }] = await Promise.all([
-      supabase.from("payslips").select("*").eq("period_id", cur.id),
+      supabase.from("payslips").select("*").eq("period_id", cur.id).order("sort_rank", { nullsFirst: false }),
       supabase.from("payroll_inputs").select("*").eq("period_id", cur.id).order("id"),
     ]);
     setSlips((s as Slip[]) ?? []); setInputs((i as Input[]) ?? []);
@@ -56,6 +56,12 @@ export default function Paie() {
   const name = (id: string) => fullName(people.find((p) => p.id === id));
   const open = cur && ["ouverte", "calculee"].includes(cur.status);
   const sum = (k: keyof Slip) => slips.reduce((a, s) => a + Number(s[k] ?? 0), 0);
+  // Staff (salaire fixe) d'abord, puis agents RDV du net le plus haut au plus bas — même ordre que sort_rank en base.
+  const ordered = [...slips].sort((a, b) =>
+    (a.sort_rank ?? Infinity) - (b.sort_rank ?? Infinity)
+    || Number(a.pay_mode === "rdv") - Number(b.pay_mode === "rdv")
+    || Number(b.net_pay) - Number(a.net_pay)
+    || name(a.profile_id).localeCompare(name(b.profile_id)));
 
   return (
     <Guard module="paie">
@@ -81,7 +87,7 @@ export default function Paie() {
             {canEdit && cur.status === "calculee" && <button className="btn-ok" disabled={busy} onClick={() => confirm("Valider ? Les bulletins seront publiés aux salariés et le mois sera verrouillé.") && run(async () => {
               must(await supabase.rpc("validate_payroll", { p_period: cur.id })); await loadPeriods();
             }, "Paie validée — bulletins publiés")}>Valider & publier</button>}
-            <button className="btn" disabled={!slips.length} onClick={() => downloadCSV(`paie-${cur.month}.csv`, slips.map((s) => ({
+            <button className="btn" disabled={!slips.length} onClick={() => downloadCSV(`paie-${cur.month}.csv`, ordered.map((s) => ({
               matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id), base: s.base_salary, brut: s.gross,
               cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, retenues: s.deductions, net: s.net_pay, charges_patronales: s.employer_charges, cout_total: s.employer_cost,
             })))}>Journal de paie (CSV)</button>
@@ -98,7 +104,7 @@ export default function Paie() {
           {tab === "bulletins" ? (slips.length === 0 ? <Empty>Cliquez sur « Calculer la paie ».</Empty> : (
             <table className="tbl">
               <thead><tr><th>Salarié</th><th className="text-right">Base</th><th className="text-right">Brut</th><th className="text-right">CNSS+AMO</th><th className="text-right">IR</th><th className="text-right">Retenues</th><th className="text-right">Net</th><th /></tr></thead>
-              <tbody>{[...slips].sort((a, b) => name(a.profile_id).localeCompare(name(b.profile_id))).map((s) => (
+              <tbody>{ordered.map((s) => (
                 <tr key={s.id}>
                   <td className="font-medium">{name(s.profile_id)}</td><td className="text-right">{num(s.base_salary, 2)}</td><td className="text-right">{num(s.gross, 2)}</td>
                   <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee), 2)}</td><td className="text-right">{num(s.ir, 2)}</td>

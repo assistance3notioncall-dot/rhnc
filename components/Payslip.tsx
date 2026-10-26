@@ -7,6 +7,10 @@ type Line = { id: number; sort: number; code: string; label: string; base: numbe
 export type Slip = {
   id: string; period_id: string; profile_id: string; base_salary: number; gross: number; cnss_employee: number; amo_employee: number;
   frais_pro: number; net_imposable: number; ir: number; deductions: number; net_pay: number; employer_charges: number; employer_cost: number;
+  /** 'fixe' (staff, salaire de base) ou 'rdv' (agents brute / qualif). */
+  pay_mode?: string | null;
+  /** Ordre d'affichage calculé en base : staff d'abord, puis agents du net le plus haut au plus bas. */
+  sort_rank?: number | null;
 };
 
 /** Bulletin de paie imprimable. */
