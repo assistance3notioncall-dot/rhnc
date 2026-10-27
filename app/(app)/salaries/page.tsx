@@ -66,6 +66,14 @@ export default function Salaries() {
     }, hide ? "Salaire masqué aux autres utilisateurs" : "Salaire de nouveau visible");
   }
   const salaryCell = (id: string) => salaries[id] != null ? dh(salaries[id]) : hidden[id] ? "Masqué" : "—";
+  async function deleteEmployee(r: Row) {
+    const name = fullName(r);
+    if (!confirm(`Supprimer définitivement ${name} ?\n\nSa fiche, son accès au site, ses bulletins de paie, documents et demandes seront supprimés. Cette action est irréversible.`)) return;
+    if (prompt(`Pour confirmer, tapez son identifiant : ${r.username}`)?.trim().toLowerCase() !== (r.username ?? "").toLowerCase()) return;
+    await run(async () => {
+      must(await supabase.rpc("delete_employee", { p_profile: r.id })); await load();
+    }, `${name} a été supprimé(e)`);
+  }
   async function setBlocked(r: Row, block: boolean) {
     await run(async () => { must(await supabase.from("profiles").update({ account_status: block ? "bloque" : "actif" }).eq("id", r.id)); await load(); }, block ? "Accès bloqué" : "Accès débloqué");
   }
@@ -126,6 +134,7 @@ export default function Salaries() {
                   {canEdit && r.account_status === "sans_compte" && r.status === "actif" && <button className="btn-pri btn-sm ml-1" disabled={busy} onClick={() => createAccess([r.id])}>Créer l&apos;accès</button>}
                   {isSuper && r.account_status === "actif" && r.id !== me?.id && <button className="btn-no btn-sm ml-1" disabled={busy} onClick={() => confirm(`Bloquer l'accès de ${fullName(r)} ?`) && setBlocked(r, true)}>Bloquer</button>}
                   {isSuper && r.account_status === "bloque" && <button className="btn-ok btn-sm ml-1" disabled={busy} onClick={() => setBlocked(r, false)}>Débloquer</button>}
+                  {isSuper && r.id !== me?.id && <button className="btn-no btn-sm ml-1" disabled={busy} title="Supprimer définitivement la fiche et l'accès" onClick={() => deleteEmployee(r)}>Supprimer</button>}
                 </td>
               </tr>))}
             </tbody>
