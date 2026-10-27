@@ -7,9 +7,10 @@
 // n'importe quel salarié pouvait le remettre à false depuis la console sans
 // jamais remplacer son mot de passe provisoire.
 //
-// Déploiement : verify_jwt laissé à ON (défaut) — `withSupabase({ auth: "user" })`
-// s'appuie sur le JWT vérifié par la plateforme. Ne pas le désactiver comme pour
-// la fonction `login`.
+// Déploiement : verify_jwt = false, comme create-access / reset-access — le projet
+// utilise les nouvelles clés de signature JWT, que la vérification de la passerelle
+// ne gère pas. `withSupabase({ auth: "user" })` valide le jeton, puis `getUser()`
+// confirme l'identité côté Auth : un appel sans session valide est refusé (401).
 import { withSupabase } from "npm:@supabase/server@^1";
 
 const MIN_LEN = 8;
