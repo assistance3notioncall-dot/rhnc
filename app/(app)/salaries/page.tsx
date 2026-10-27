@@ -28,6 +28,7 @@ export default function Salaries() {
   const [edit, setEdit] = useState<string | "new" | null>(null);
   const [creds, setCreds] = useState<Cred[] | null>(null);
   const [salFor, setSalFor] = useState<Row | null>(null);
+  const [delFor, setDelFor] = useState<Row | null>(null);
   const [importing, setImporting] = useState(false);
   const { busy, run } = useAction();
 
@@ -133,7 +134,9 @@ export default function Salaries() {
         )}
       </div>
 
-      {edit && <FicheModal id={edit === "new" ? null : edit} salary={edit === "new" ? null : salaryCell(edit)} roles={roles} depts={depts} people={rows} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {edit && <FicheModal id={edit === "new" ? null : edit} salary={edit === "new" ? null : salaryCell(edit)} roles={roles} depts={depts} people={rows} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }}
+        onDelete={() => { const r = rows.find((x) => x.id === edit); setEdit(null); if (r) setDelFor(r); }} />}
+      {delFor && <DeleteModal person={delFor} onClose={() => setDelFor(null)} onDone={() => { setDelFor(null); load(); }} />}
       {salFor && <SalaryChangeModal person={{ id: salFor.id, name: fullName(salFor) }} current={salaries[salFor.id] ?? undefined} onClose={() => setSalFor(null)} onDone={() => { setSalFor(null); load(); }} />}
       {creds && <CredsModal creds={creds} onClose={() => setCreds(null)} />}
       {importing && <ImportModal roles={roles} depts={depts} onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
@@ -147,7 +150,7 @@ const EMPTY = {
 };
 const COMP = { base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "" };
 
-function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id: string | null; salary: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void }) {
+function FicheModal({ id, salary, roles, depts, people, onClose, onDone, onDelete }: { id: string | null; salary: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void; onDelete?: () => void }) {
   const { me, isSuper } = useSession();
   const [f, setF] = useState<typeof EMPTY>(EMPTY);
   const [c, setC] = useState<typeof COMP>(COMP);
@@ -227,10 +230,72 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="N° CNSS"><input className="inp" value={c.cnss_number} onChange={setc("cnss_number")} /></Field>
         <Field label="RIB"><input className="inp" value={c.rib} onChange={setc("rib")} /></Field>
       </div>
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {id && onDelete && isSuper && id !== me?.id && f.role_key !== "super_admin" &&
+          <button className="btn-no mr-auto" disabled={busy} onClick={onDelete}>Supprimer la fiche</button>}
         <button className="btn" onClick={onClose}>Annuler</button>
         <button className="btn-pri" disabled={busy || !f.first_name || !/^[a-z0-9.]+$/.test(f.username.trim().toLowerCase())} onClick={save}>Enregistrer</button>
       </div>
+    </Modal>
+  );
+}
+
+/** Suppression définitive (super admin). Refusée par le serveur si la fiche a un
+ *  historique : on propose alors « Sorti », qui garde bulletins, congés et RDV. */
+function DeleteModal({ person, onClose, onDone }: { person: Row; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const { busy, run } = useAction();
+  const [typed, setTyped] = useState("");
+  const [refus, setRefus] = useState<string | null>(null);
+  const nom = fullName(person);
+  const cle = person.username || person.matricule || person.first_name;
+
+  async function supprimer() {
+    await run(async () => {
+      const { data, error } = await supabase.functions.invoke("delete-employee", { body: { profile_id: person.id } });
+      if (error) {
+        let body: { error?: string; history?: unknown } | undefined;
+        try { body = await (error as { context?: Response }).context?.json(); } catch { /* */ }
+        // Historique : pas une panne, on bascule sur la proposition « Sorti ».
+        if (body?.history) { setRefus(body.error ?? "Cette fiche a un historique."); return; }
+        throw new Error(body?.error ?? error.message);
+      }
+      toast(`Fiche de ${data?.name ?? nom} supprimée`);
+      onDone();
+    });
+  }
+  async function passerSorti() {
+    await run(async () => {
+      const maj: Record<string, string> = { status: "sorti" };
+      if (person.account_status === "actif") maj.account_status = "bloque";
+      must(await supabase.from("profiles").update(maj).eq("id", person.id));
+      onDone();
+    }, person.account_status === "actif" ? `${nom} passé en « Sorti », accès bloqué` : `${nom} passé en « Sorti »`);
+  }
+
+  return (
+    <Modal title={`Supprimer — ${nom}`} onClose={onClose}>
+      {refus ? (<>
+        <p className="mb-3 rounded-lg bg-warn-l px-3 py-2 text-warn">{refus}</p>
+        <p className="mut mb-4">« Sorti » retire le salarié des listes actives{person.account_status === "actif" ? " et bloque son accès" : ""}, sans effacer son historique.</p>
+        <div className="flex justify-end gap-2">
+          <button className="btn" onClick={onClose}>Annuler</button>
+          {(person.status !== "sorti" || person.account_status === "actif") &&
+            <button className="btn-pri" disabled={busy} onClick={passerSorti}>Passer en « Sorti »</button>}
+        </div>
+      </>) : (<>
+        <p className="mb-3 rounded-lg bg-err-l px-3 py-2 text-err">
+          Suppression <b>définitive</b> de la fiche{person.account_status !== "sans_compte" ? " et du compte de connexion" : ""}. Impossible d&apos;annuler.
+        </p>
+        <p className="mut mb-3">À réserver aux fiches créées par erreur (doublon, test). Pour un salarié qui a quitté l&apos;entreprise, mettez plutôt son statut à « Sorti ».</p>
+        <Field label={`Tapez « ${cle} » pour confirmer`}>
+          <input className="inp" autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <button className="btn" onClick={onClose}>Annuler</button>
+          <button className="btn-no" disabled={busy || typed.trim() !== cle} onClick={supprimer}>Supprimer définitivement</button>
+        </div>
+      </>)}
     </Modal>
   );
 }
