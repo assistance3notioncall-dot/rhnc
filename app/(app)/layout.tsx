@@ -27,6 +27,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(0);
   const [menu, setMenu] = useState(false);
+  // Barre latérale masquable sur ordinateur ; le choix est mémorisé dans ce navigateur.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => { try { setCollapsed(localStorage.getItem("rh360.sidebar") === "hidden"); } catch { /* stockage indisponible */ } }, []);
+  const toggleSidebar = () => setCollapsed((c) => {
+    try { localStorage.setItem("rh360.sidebar", c ? "shown" : "hidden"); } catch { /* */ }
+    return !c;
+  });
 
   useEffect(() => {
     if (!ready) return;
@@ -102,11 +109,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className={`${menu ? "fixed inset-0 z-40 flex" : "hidden"} max-md:w-full flex-col gap-4 overflow-y-auto border-r border-line bg-white px-3 py-[18px] md:sticky md:top-0 md:flex md:h-screen`}>
+    <div className={`min-h-screen ${collapsed ? "" : "md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]"}`}>
+      <aside className={`${menu ? "fixed inset-0 z-40 flex" : "hidden"} max-md:w-full flex-col gap-4 overflow-y-auto border-r border-line bg-white px-3 py-[18px] md:sticky md:top-0 md:h-screen ${collapsed ? "md:hidden" : "md:flex"}`}>
         <div className="flex items-center justify-between px-2">
           <Logo />
           <button className="btn btn-sm md:hidden" onClick={() => setMenu(false)}>✕</button>
+          <button className="btn btn-sm hidden px-2 md:inline-flex" onClick={toggleSidebar} title="Masquer le menu" aria-label="Masquer le menu">«</button>
         </div>
         {nav}
         <div className="mt-auto rounded-[10px] bg-gray2-l p-3 text-[12.5px]">
@@ -117,6 +125,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-w-0">
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-white px-3 py-2.5 sm:px-4 md:px-6 md:py-3">
           <button className="btn btn-sm md:hidden" onClick={() => setMenu(true)}>☰</button>
+          {collapsed && <button className="btn btn-sm hidden md:inline-flex" onClick={toggleSidebar} title="Afficher le menu" aria-label="Afficher le menu">☰ Menu</button>}
           <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
             <div className="relative">
               <button className="relative grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-line bg-white" onClick={() => setOpen(!open)} aria-label="Notifications">
