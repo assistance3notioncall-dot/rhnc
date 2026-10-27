@@ -18,7 +18,11 @@ export default function Profil() {
     if (!me) return;
     if (me.department_id) supabase.from("departments").select("name").eq("id", me.department_id).maybeSingle().then(({ data }) => setDept(data?.name ?? ""));
     if (me.manager_id) supabase.from("team_directory").select("first_name,last_name").eq("id", me.manager_id).maybeSingle().then(({ data }) => setManager(fullName(data)));
-    supabase.from("employee_compensation").select("base_salary,cnss_number,rib").eq("profile_id", me.id).maybeSingle().then(({ data }) => setComp(data));
+    // base_salary passe par visible_base_salaries (le salarié voit toujours le sien)
+    Promise.all([
+      supabase.from("employee_compensation").select("cnss_number,rib").eq("profile_id", me.id).maybeSingle(),
+      supabase.rpc("visible_base_salaries", { p_profile: me.id }),
+    ]).then(([{ data }, { data: v }]) => data && setComp({ ...data, base_salary: Number((v as { base_salary: number }[] | null)?.[0]?.base_salary ?? 0) }));
   }, [me]);
   if (!me) return null;
 

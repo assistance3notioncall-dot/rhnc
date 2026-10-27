@@ -18,7 +18,9 @@ export default function Salaries() {
   const [rows, setRows] = useState<Row[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [depts, setDepts] = useState<Dept[]>([]);
-  const [salaries, setSalaries] = useState<Record<string, number>>({});
+  // Salaire de base visible (null = masqué par le super admin) et drapeau « masqué »
+  const [salaries, setSalaries] = useState<Record<string, number | null>>({});
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [fRole, setFRole] = useState("");
   const [fAcc, setFAcc] = useState("tous");
@@ -34,10 +36,12 @@ export default function Salaries() {
       supabase.from("employees_access").select("*").order("matricule"),
       supabase.from("app_roles").select("key,label,kind,locked,color").order("label"),
       supabase.from("departments").select("id,name").order("name"),
-      supabase.from("employee_compensation").select("profile_id,base_salary"),
+      supabase.rpc("visible_base_salaries"),
     ]);
     setRows((r as Row[]) ?? []); setRoles((ro as Role[]) ?? []); setDepts((d as Dept[]) ?? []);
-    setSalaries(Object.fromEntries((c ?? []).map((x) => [x.profile_id, Number(x.base_salary)])));
+    const sal = (c as { profile_id: string; base_salary: number | null; hidden: boolean }[] | null) ?? [];
+    setSalaries(Object.fromEntries(sal.map((x) => [x.profile_id, x.base_salary == null ? null : Number(x.base_salary)])));
+    setHidden(Object.fromEntries(sal.map((x) => [x.profile_id, !!x.hidden])));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -55,6 +59,13 @@ export default function Salaries() {
       setCreds(data.results as Cred[]); setSel([]); await load();
     });
   }
+  async function hideSalaries(ids: string[], hide: boolean) {
+    if (!ids.length) return;
+    await run(async () => {
+      must(await supabase.rpc("set_salary_hidden", { p_profiles: ids, p_hidden: hide })); await load();
+    }, hide ? "Salaire masqué aux autres utilisateurs" : "Salaire de nouveau visible");
+  }
+  const salaryCell = (id: string) => salaries[id] != null ? dh(salaries[id]) : hidden[id] ? "Masqué" : "—";
   async function setBlocked(r: Row, block: boolean) {
     await run(async () => { must(await supabase.from("profiles").update({ account_status: block ? "bloque" : "actif" }).eq("id", r.id)); await load(); }, block ? "Accès bloqué" : "Accès débloqué");
   }
@@ -62,7 +73,11 @@ export default function Salaries() {
   return (
     <Guard module="salaries">
       <PageHead title="Salariés" sub={`${rows.length} fiches · ${rows.filter((r) => r.account_status === "actif").length} avec accès`}>
-        <button className="btn" onClick={() => downloadCSV("salaries.csv", shown.map(({ id: _id, ...r }) => ({ ...r, salaire_base: salaries[_id] ?? "" })))}>Export CSV</button>
+        <button className="btn" onClick={() => downloadCSV("salaries.csv", shown.map(({ id: _id, ...r }) => ({ ...r, salaire_base: salaries[_id] ?? (hidden[_id] ? "masqué" : "") })))}>Export CSV</button>
+        {isSuper && <button className="btn" disabled={busy} title="Masquer le salaire de base des fiches affichées aux autres utilisateurs (RH, direction, managers)"
+          onClick={() => confirm(`Masquer le salaire de base de ${shown.length} fiche(s) aux autres utilisateurs ?`) && hideSalaries(shown.map((r) => r.id), true)}>🔒 Masquer les salaires</button>}
+        {isSuper && shown.some((r) => hidden[r.id]) && <button className="btn" disabled={busy}
+          onClick={() => hideSalaries(shown.filter((r) => hidden[r.id]).map((r) => r.id), false)}>🔓 Tout afficher</button>}
         {canEdit && <button className="btn" onClick={() => setImporting(true)}>Importer CSV</button>}
         {canEdit && <button className="btn-pri" onClick={() => setEdit("new")}>+ Nouvelle fiche</button>}
       </PageHead>
@@ -96,11 +111,18 @@ export default function Salaries() {
                 <td><span className="badge" style={{ background: roleColor(r.role_key) + "1f", color: roleColor(r.role_key) }}>{r.role_label}</span></td>
                 <td>{r.section}</td>
                 <td className="mut">{dfr(r.hire_date)}</td>
-                <td className="text-right">{salaries[r.id] != null ? dh(salaries[r.id]) : "—"}</td>
+                <td className="whitespace-nowrap text-right">
+                  <span className={salaries[r.id] == null && hidden[r.id] ? "mut italic" : ""}>{salaryCell(r.id)}</span>
+                  {isSuper ? (
+                    <button className={`btn btn-sm ml-1.5 px-1.5 ${hidden[r.id] ? "border-warn text-warn" : "opacity-50"}`} disabled={busy}
+                      title={hidden[r.id] ? "Masqué aux autres utilisateurs — cliquer pour l'afficher" : "Visible — cliquer pour le masquer aux autres utilisateurs"}
+                      onClick={() => hideSalaries([r.id], !hidden[r.id])}>{hidden[r.id] ? "🔒" : "🔓"}</button>
+                  ) : hidden[r.id] && salaries[r.id] == null ? <span className="ml-1" title="Masqué par le super admin">🔒</span> : null}
+                </td>
                 <td><Badge status={r.account_status} /></td>
                 <td className="whitespace-nowrap text-right">
                   {canEdit && <button className="btn btn-sm" onClick={() => setEdit(r.id)}>Fiche</button>}
-                  {can("salaire_base") && r.id !== me?.id && <button className="btn btn-sm ml-1" onClick={() => setSalFor(r)}>Salaire</button>}
+                  {can("salaire_base") && r.id !== me?.id && (isSuper || !hidden[r.id]) && <button className="btn btn-sm ml-1" onClick={() => setSalFor(r)}>Salaire</button>}
                   {canEdit && r.account_status === "sans_compte" && r.status === "actif" && <button className="btn-pri btn-sm ml-1" disabled={busy} onClick={() => createAccess([r.id])}>Créer l&apos;accès</button>}
                   {isSuper && r.account_status === "actif" && r.id !== me?.id && <button className="btn-no btn-sm ml-1" disabled={busy} onClick={() => confirm(`Bloquer l'accès de ${fullName(r)} ?`) && setBlocked(r, true)}>Bloquer</button>}
                   {isSuper && r.account_status === "bloque" && <button className="btn-ok btn-sm ml-1" disabled={busy} onClick={() => setBlocked(r, false)}>Débloquer</button>}
@@ -111,8 +133,8 @@ export default function Salaries() {
         )}
       </div>
 
-      {edit && <FicheModal id={edit === "new" ? null : edit} roles={roles} depts={depts} people={rows} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
-      {salFor && <SalaryChangeModal person={{ id: salFor.id, name: fullName(salFor) }} current={salaries[salFor.id]} onClose={() => setSalFor(null)} onDone={() => { setSalFor(null); load(); }} />}
+      {edit && <FicheModal id={edit === "new" ? null : edit} salary={edit === "new" ? null : salaryCell(edit)} roles={roles} depts={depts} people={rows} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {salFor && <SalaryChangeModal person={{ id: salFor.id, name: fullName(salFor) }} current={salaries[salFor.id] ?? undefined} onClose={() => setSalFor(null)} onDone={() => { setSalFor(null); load(); }} />}
       {creds && <CredsModal creds={creds} onClose={() => setCreds(null)} />}
       {importing && <ImportModal roles={roles} depts={depts} onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
     </Guard>
@@ -125,7 +147,7 @@ const EMPTY = {
 };
 const COMP = { base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "" };
 
-function FicheModal({ id, roles, depts, people, onClose, onDone }: { id: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void }) {
+function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id: string | null; salary: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void }) {
   const { me, isSuper } = useSession();
   const [f, setF] = useState<typeof EMPTY>(EMPTY);
   const [c, setC] = useState<typeof COMP>(COMP);
@@ -133,7 +155,8 @@ function FicheModal({ id, roles, depts, people, onClose, onDone }: { id: string 
   useEffect(() => {
     if (!id) return;
     supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : "")])) as typeof EMPTY));
-    supabase.from("employee_compensation").select("*").eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, data[k] ?? ""])) as typeof COMP));
+    // base_salary n'est pas lisible directement (salaire masquable) : affiché via `salary`
+    supabase.from("employee_compensation").select("transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib").eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, (data as Record<string, unknown>)[k] ?? ""])) as typeof COMP));
   }, [id]);
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const setc = (k: keyof typeof COMP) => (e: React.ChangeEvent<HTMLInputElement>) => setC({ ...c, [k]: e.target.value });
@@ -196,7 +219,8 @@ function FicheModal({ id, roles, depts, people, onClose, onDone }: { id: string 
       </div>
       <h3 className="mb-2 mt-2">Rémunération</h3>
       <div className="grid gap-x-3 sm:grid-cols-3">
-        <Field label={id ? "Salaire de base (via « Salaire »)" : "Salaire de base (DH brut)"}><input type="number" className="inp" disabled={!!id} value={c.base_salary} onChange={setc("base_salary")} /></Field>
+        {id ? <Field label="Salaire de base (via « Salaire »)"><input className="inp" disabled value={salary ?? "—"} /></Field>
+          : <Field label="Salaire de base (DH brut)"><input type="number" className="inp" value={c.base_salary} onChange={setc("base_salary")} /></Field>}
         <Field label="Prime d'assiduité (DH)"><input type="number" className="inp" value={c.attendance_bonus} onChange={setc("attendance_bonus")} /></Field>
         <Field label="Indemnité transport"><input type="number" className="inp" value={c.transport_allowance} onChange={setc("transport_allowance")} /></Field>
         <Field label="Indemnité panier"><input type="number" className="inp" value={c.meal_allowance} onChange={setc("meal_allowance")} /></Field>
