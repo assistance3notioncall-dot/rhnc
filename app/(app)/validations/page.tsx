@@ -33,7 +33,8 @@ export default function Validations() {
       .in("status", statuses).neq("profile_id", me.id).order("submitted_at", { ascending: tab !== "histo" }).limit(200);
     let rows = (data as Req[]) ?? [];
     // un manager ne voit "à valider" que l'étape manager ; les RH voient l'étape RH
-    if (tab === "attente" && !isHr) rows = rows.filter((r) => r.status === "envoyee");
+    // les avances (déjà filtrées par la base) restent visibles pour les rôles autorisés à les valider
+    if (tab === "attente" && !isHr) rows = rows.filter((r) => r.status === "envoyee" || (r.kind === "avance" && can("avances", true)));
     setReqs(rows);
     if (can("salaire_base", true)) {
       const { data: s } = await supabase.from("salary_changes")
@@ -53,7 +54,7 @@ export default function Validations() {
     if (data) window.open(data.signedUrl, "_blank");
   };
 
-  const tabs = [{ key: "attente", label: `À valider` }, ...(isHr ? [{ key: "cloturer", label: "À clôturer" }] : []), { key: "histo", label: "Historique" }];
+  const tabs = [{ key: "attente", label: `À valider` }, ...(isHr || can("avances", true) ? [{ key: "cloturer", label: "À clôturer" }] : []), { key: "histo", label: "Historique" }];
   if (can("salaire_base", true)) tabs.splice(1, 0, { key: "salaires", label: `Salaires (${sal.length})` });
 
   return (
