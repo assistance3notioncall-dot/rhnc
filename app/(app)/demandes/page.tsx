@@ -121,6 +121,8 @@ function NewRequest({ kind: initial, types, tpls, onClose, onDone }: {
   const [solde, setSolde] = useState<number | null>(null);
   const [tpl, setTpl] = useState(tpls[0]?.id ?? "");
   const [amount, setAmount] = useState("");
+  // Plafond des avances : 1 500 DH par mois (réglage société), moins ce qui est déjà demandé ce mois-ci
+  const [adv, setAdv] = useState<{ cap: number; used: number; remaining: number } | null>(null);
   const [category, setCategory] = useState("Erreur de paie");
   const [comment, setComment] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -128,6 +130,13 @@ function NewRequest({ kind: initial, types, tpls, onClose, onDone }: {
   const type = types.find((t) => t.id === lt);
 
   useEffect(() => { if (!lt && types[0]) setLt(types[0].id); if (!tpl && tpls[0]) setTpl(tpls[0].id); }, [types, tpls, lt, tpl]);
+  useEffect(() => {
+    if (!me || kind !== "avance") return;
+    supabase.rpc("advance_status").then(({ data }) => {
+      const a = (data as { cap: number; used: number; remaining: number }[] | null)?.[0];
+      if (a) setAdv({ cap: Number(a.cap), used: Number(a.used), remaining: Number(a.remaining) });
+    });
+  }, [me, kind]);
   useEffect(() => {
     if (!me || !lt) return;
     supabase.rpc("balance_of", { p_profile: me.id, p_leave_type: lt }).then(({ data }) => setSolde(Number(data ?? 0)));
@@ -157,7 +166,7 @@ function NewRequest({ kind: initial, types, tpls, onClose, onDone }: {
   }
 
   const valid = kind === "absence" ? !!(lt && start && end && end >= start && (!type?.requires_attachment || file))
-    : kind === "document" ? !!tpl : kind === "avance" ? Number(amount) > 0 : comment.trim().length > 3;
+    : kind === "document" ? !!tpl : kind === "avance" ? Number(amount) > 0 && (adv == null || Number(amount) <= adv.remaining) : comment.trim().length > 3;
 
   return (
     <Modal title="Nouvelle demande" onClose={onClose}>
@@ -192,7 +201,15 @@ function NewRequest({ kind: initial, types, tpls, onClose, onDone }: {
           </select>
         </Field>
       )}
-      {kind === "avance" && <Field label="Montant (DH)"><input type="number" min={1} className="inp" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
+      {kind === "avance" && (<>
+        <Field label="Montant (DH)"><input type="number" min={1} max={adv?.remaining} className="inp" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+        {adv && (
+          <div className={`mb-3 rounded-lg px-3 py-2 ${Number(amount) > adv.remaining ? "bg-err-l text-err" : "bg-pri-l text-pri-d"}`}>
+            Avances limitées à <b>{dh(adv.cap)}</b> par mois · déjà demandé ce mois-ci : {dh(adv.used)} · reste : <b>{dh(adv.remaining)}</b>
+            {Number(amount) > adv.remaining && <> — montant trop élevé</>}
+          </div>
+        )}
+      </>)}
       {kind === "reclamation" && (
         <Field label="Catégorie">
           <select className="inp" value={category} onChange={(e) => setCategory(e.target.value)}>
