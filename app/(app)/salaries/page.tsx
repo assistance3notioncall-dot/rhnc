@@ -65,6 +65,13 @@ export default function Salaries() {
       must(await supabase.rpc("set_salary_hidden", { p_profiles: ids, p_hidden: hide })); await load();
     }, hide ? "Salaire masqué aux autres utilisateurs" : "Salaire de nouveau visible");
   }
+  // Bloquer / supprimer : super admin, ou droit « Salariés » en modification — sauf Direction, RH, super admin et soi-même
+  const canManage = (r: Row) => {
+    if (r.id === me?.id) return false;
+    if (isSuper) return true;
+    const role = roles.find((x) => x.key === r.role_key);
+    return canEdit && !role?.locked && !["rh", "admin"].includes(role?.kind ?? "salarie");
+  };
   const salaryCell = (id: string) => salaries[id] != null ? dh(salaries[id]) : hidden[id] ? "Masqué" : "—";
   async function deleteEmployee(r: Row) {
     const name = fullName(r);
@@ -75,7 +82,8 @@ export default function Salaries() {
     }, `${name} a été supprimé(e)`);
   }
   async function setBlocked(r: Row, block: boolean) {
-    await run(async () => { must(await supabase.from("profiles").update({ account_status: block ? "bloque" : "actif" }).eq("id", r.id)); await load(); }, block ? "Accès bloqué" : "Accès débloqué");
+    // Bloquer = fiche « bloquée » + compte banni + déconnexion immédiate (fonction set_account_blocked)
+    await run(async () => { must(await supabase.rpc("set_account_blocked", { p_profile: r.id, p_block: block })); await load(); }, block ? "Accès bloqué — la personne est déconnectée" : "Accès débloqué");
   }
 
   return (
@@ -132,9 +140,9 @@ export default function Salaries() {
                   {canEdit && <button className="btn btn-sm" onClick={() => setEdit(r.id)}>Fiche</button>}
                   {can("salaire_base") && r.id !== me?.id && (isSuper || !hidden[r.id]) && <button className="btn btn-sm ml-1" onClick={() => setSalFor(r)}>Salaire</button>}
                   {canEdit && r.account_status === "sans_compte" && r.status === "actif" && <button className="btn-pri btn-sm ml-1" disabled={busy} onClick={() => createAccess([r.id])}>Créer l&apos;accès</button>}
-                  {isSuper && r.account_status === "actif" && r.id !== me?.id && <button className="btn-no btn-sm ml-1" disabled={busy} onClick={() => confirm(`Bloquer l'accès de ${fullName(r)} ?`) && setBlocked(r, true)}>Bloquer</button>}
-                  {isSuper && r.account_status === "bloque" && <button className="btn-ok btn-sm ml-1" disabled={busy} onClick={() => setBlocked(r, false)}>Débloquer</button>}
-                  {isSuper && r.id !== me?.id && <button className="btn-no btn-sm ml-1" disabled={busy} title="Supprimer définitivement la fiche et l'accès" onClick={() => deleteEmployee(r)}>Supprimer</button>}
+                  {canManage(r) && r.account_status === "actif" && <button className="btn-no btn-sm ml-1" disabled={busy} onClick={() => confirm(`Bloquer l'accès de ${fullName(r)} ?`) && setBlocked(r, true)}>Bloquer</button>}
+                  {canManage(r) && r.account_status === "bloque" && <button className="btn-ok btn-sm ml-1" disabled={busy} onClick={() => setBlocked(r, false)}>Débloquer</button>}
+                  {canManage(r) && <button className="btn-no btn-sm ml-1" disabled={busy} title="Supprimer définitivement la fiche et l'accès" onClick={() => deleteEmployee(r)}>Supprimer</button>}
                 </td>
               </tr>))}
             </tbody>
