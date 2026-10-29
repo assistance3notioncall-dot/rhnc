@@ -12,6 +12,10 @@ type Role = { key: string; label: string; kind: string; locked: boolean; color: 
 type Dept = { id: string; name: string };
 type Cred = { name: string; username?: string; temp_password?: string; error?: string };
 
+// Ordre de la liste : actifs en haut, puis bloqués, suspendus, puis sortis / inactifs (ordre du matricule conservé dans chaque groupe)
+const rank = (r: { status: string; account_status: string }) =>
+  r.status === "actif" ? (r.account_status === "bloque" ? 1 : 0) : r.status === "suspendu" ? 2 : 3;
+
 export default function Salaries() {
   const { me, can, isSuper } = useSession();
   const canEdit = can("salaries", true);
@@ -48,7 +52,7 @@ export default function Salaries() {
   const shown = useMemo(() => rows.filter((r) =>
     (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
     (!fRole || r.role_key === fRole) && (fAcc === "tous" || r.account_status === fAcc),
-  ), [rows, q, fRole, fAcc]);
+  ).sort((a, b) => rank(a) - rank(b)), [rows, q, fRole, fAcc]);
   const roleColor = (k: string | null) => roles.find((r) => r.key === k)?.color ?? "#64748b";
   const withoutAccess = shown.filter((r) => r.account_status === "sans_compte" && r.status === "actif");
 
