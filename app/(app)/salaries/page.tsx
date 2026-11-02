@@ -179,9 +179,9 @@ const EMPTY = {
 const COMP = {
   base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
   cnss_mode: "plafonne", cnss_base: 6000 as number | string, ir_applies: false, in_payroll: true, pay_method: "",
-  pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true,
+  pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true, rdv_prime_paid: false,
 };
-const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime";
+const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid";
 const CNSS_MODES: [string, string][] = [
   ["plafonne", "Plafonné (base CNSS fixe)"], ["declare", "Déclaré (salaire réel)"], ["offert", "Offert (payé par l'employeur)"],
   ["tahfiz", "Tahfiz (exonéré)"], ["non_declare", "Non déclaré"],
@@ -215,7 +215,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       if (!f.exit_date && f.status === "sorti") throw new Error("Indiquez la date de sortie.");
       const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib),
         cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method),
-        pay_plan: nn(c.pay_plan), rdv_prime: !!c.rdv_prime, cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
+        pay_plan: nn(c.pay_plan), rdv_prime: !!c.rdv_prime, rdv_prime_paid: !!c.rdv_prime_paid, cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
       if (id) {
         if (!row.email) delete row.email; // ne jamais vider l'e-mail de connexion
         must(await supabase.from("profiles").update(row).eq("id", id));
@@ -293,6 +293,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <div />
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.ir_applies} onChange={setc("ir_applies")} /> Retenir l&apos;IR</label>
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.rdv_prime} onChange={setc("rdv_prime")} /> Payer 150 DH par RDV OK pris</label>
+        {c.rdv_prime && <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.rdv_prime_paid} onChange={setc("rdv_prime_paid")} /> … versés comme challenge (déduits du reste à prendre)</label>}
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.in_payroll} onChange={setc("in_payroll")} /> Inclus dans la paie</label>
       </div>
       <div className="flex justify-end gap-2">
