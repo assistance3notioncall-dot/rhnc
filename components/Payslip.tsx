@@ -20,6 +20,8 @@ export type SlipMeta = {
   pay_method?: string; rib_ok?: boolean;
   /** Sortie en cours de mois : date, jours présents et montant retiré au prorata. */
   exit_date?: string | null; days_present?: number; prorata?: number;
+  /** Plan confirmé : qualité des RDV confirmés (OK ÷ RDV avec verdict) et prime du palier. */
+  conf_ok?: number; conf_total?: number; conf_rate?: number; conf_prime?: number;
 };
 
 export type Slip = {

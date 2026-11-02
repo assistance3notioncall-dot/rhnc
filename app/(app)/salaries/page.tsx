@@ -179,8 +179,9 @@ const EMPTY = {
 const COMP = {
   base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
   cnss_mode: "plafonne", cnss_base: 6000 as number | string, ir_applies: false, in_payroll: true, pay_method: "",
+  pay_plan: "", cnf_codes: "" as string | string[],
 };
-const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method";
+const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes";
 const CNSS_MODES: [string, string][] = [
   ["plafonne", "Plafonné (base CNSS fixe)"], ["declare", "Déclaré (salaire réel)"], ["offert", "Offert (payé par l'employeur)"],
   ["tahfiz", "Tahfiz (exonéré)"], ["non_declare", "Non déclaré"],
@@ -213,7 +214,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       if (f.exit_date && f.exit_date <= new Date().toISOString().slice(0, 10)) row.status = "sorti";
       if (!f.exit_date && f.status === "sorti") throw new Error("Indiquez la date de sortie.");
       const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib),
-        cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method) };
+        cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method),
+        pay_plan: nn(c.pay_plan), cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
       if (id) {
         if (!row.email) delete row.email; // ne jamais vider l'e-mail de connexion
         must(await supabase.from("profiles").update(row).eq("id", id));
@@ -282,6 +284,12 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
           : <div />}
         <Field label="Reste à prendre payé par"><select className="inp" value={c.pay_method} onChange={setc("pay_method")}>
           <option value="">Auto (virement si RIB valide, sinon espèces)</option><option value="virement">Virement</option><option value="especes">Espèces</option></select></Field>
+        <Field label="Plan de rémunération"><select className="inp" value={c.pay_plan} onChange={setc("pay_plan")}>
+          <option value="">Standard (salaire de base + 150 DH / RDV OK)</option>
+          <option value="confirme">Confirmé : base 5 000 + prime qualité + 150 DH / déballe</option></select></Field>
+        {c.pay_plan === "confirme" ? <Field label="Code(s) confirmateur dans les stats"><input className="inp" placeholder="ex. AS"
+          value={Array.isArray(c.cnf_codes) ? c.cnf_codes.join(", ") : c.cnf_codes} onChange={setc("cnf_codes")} /></Field> : <div />}
+        <div />
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.ir_applies} onChange={setc("ir_applies")} /> Retenir l&apos;IR</label>
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.in_payroll} onChange={setc("in_payroll")} /> Inclus dans la paie</label>
       </div>

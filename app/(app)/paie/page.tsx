@@ -164,7 +164,7 @@ export default function Paie() {
                   <td className="font-medium">{name(s.profile_id)}{s.meta?.exit_date && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Prorata : ${s.meta.days_present} j / ${s.meta.working_days} j`}>sorti le {new Date(s.meta.exit_date).toLocaleDateString("fr-FR")}</span>}</td>
                   <td className="whitespace-nowrap">{s.pay_mode === "rdv"
                     ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <span className="mut"> · {num(s.meta.ratio, 2)}/j</span>}</>
-                    : <span className="mut">Salaire fixe{(s.meta?.rdv_ok ?? 0) > 0 ? ` + ${s.meta?.rdv_ok} RDV OK` : ""}</span>}</td>
+                    : <span className="mut">{(s.meta?.conf_total ?? 0) > 0 ? `Confirmé · qualité ${num(s.meta?.conf_rate ?? 0, 1)} %` : "Salaire fixe"}{(s.meta?.rdv_ok ?? 0) > 0 ? ` + ${s.meta?.rdv_ok} RDV OK` : ""}</span>}</td>
                   <td className="text-right">{num(s.gross, 2)}</td>
                   <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee) + Number(s.ir), 2)}</td>
                   <td className="text-right">{num(s.meta?.challenge_paid ?? 0, 2)}</td><td className="text-right">{num(s.meta?.advances ?? 0, 2)}</td>
