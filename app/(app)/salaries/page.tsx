@@ -293,7 +293,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <div />
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.ir_applies} onChange={setc("ir_applies")} /> Retenir l&apos;IR</label>
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.rdv_prime} onChange={setc("rdv_prime")} /> Payer 150 DH par RDV OK pris</label>
-        {c.rdv_prime && <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.rdv_prime_paid} onChange={setc("rdv_prime_paid")} /> … versés comme challenge (déduits du reste à prendre)</label>}
+        {c.rdv_prime && <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.rdv_prime_paid} onChange={setc("rdv_prime_paid")} /> … versés à part comme challenge (hors brut)</label>}
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.in_payroll} onChange={setc("in_payroll")} /> Inclus dans la paie</label>
       </div>
       <div className="flex justify-end gap-2">

@@ -14,7 +14,7 @@ export type SlipMeta = {
   leave_taken?: number; leave_balance?: number;
   salary?: number; assiduite?: number; challenge?: number; prime?: number;
   cnss_mode?: string; cnss_base?: number; amo_base?: number; employee_share?: number;
-  challenge_paid?: number; advances?: number; advances_count?: number; other_deductions?: number;
+  challenge_paid?: number; challenge_cash?: number; advances?: number; advances_count?: number; other_deductions?: number;
   reste_a_prendre?: number; virement?: number; especes?: number; transfer_ref?: string;
   /** 'virement' ou 'especes' pour le reste à prendre ; rib_ok = RIB valide (24 chiffres, clé 97). */
   pay_method?: string; rib_ok?: boolean;
@@ -252,6 +252,7 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
             {prime > 0 && <Row k="Prime & autres" v={m(prime)} />}
             {Number(meta.prorata ?? 0) > 0 && <Row k={`Prorata sortie (${meta.days_present} j / ${meta.working_days} j)`} v={"−" + m(meta.prorata)} />}
             <Row k="Total" v={m(gross)} strong />
+            {Number(meta.challenge_cash ?? 0) > 0 && <Row k={<>Challenge RDV OK <span className="text-mut">(versé à part, hors brut)</span></>} v={m(meta.challenge_cash)} />}
           </Card>
         </Box>
         <Box title="Moyen de paiement">
