@@ -28,6 +28,9 @@ export default function Salaries() {
   const [q, setQ] = useState("");
   const [fRole, setFRole] = useState("");
   const [fAcc, setFAcc] = useState("tous");
+  // Sortis (date de sortie passée ou statut « sorti ») : masqués de la liste active, consultables en historique
+  const [showOut, setShowOut] = useState(false);
+  const [exits, setExits] = useState<Record<string, string>>({});
   const [sel, setSel] = useState<string[]>([]);
   const [edit, setEdit] = useState<string | "new" | null>(null);
   const [creds, setCreds] = useState<Cred[] | null>(null);
@@ -36,12 +39,14 @@ export default function Salaries() {
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
-    const [{ data: r }, { data: ro }, { data: d }, { data: c }] = await Promise.all([
+    const [{ data: r }, { data: ro }, { data: d }, { data: c }, { data: ex }] = await Promise.all([
       supabase.from("employees_access").select("*").order("matricule"),
       supabase.from("app_roles").select("key,label,kind,locked,color").order("label"),
       supabase.from("departments").select("id,name").order("name"),
       supabase.rpc("visible_base_salaries"),
+      supabase.from("profiles").select("id,exit_date").not("exit_date", "is", null),
     ]);
+    setExits(Object.fromEntries(((ex as { id: string; exit_date: string }[] | null) ?? []).map((x) => [x.id, x.exit_date])));
     setRows((r as Row[]) ?? []); setRoles((ro as Role[]) ?? []); setDepts((d as Dept[]) ?? []);
     const sal = (c as { profile_id: string; base_salary: number | null; hidden: boolean }[] | null) ?? [];
     setSalaries(Object.fromEntries(sal.map((x) => [x.profile_id, x.base_salary == null ? null : Number(x.base_salary)])));
@@ -49,10 +54,13 @@ export default function Salaries() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const today = new Date().toISOString().slice(0, 10);
+  const isOut = useCallback((r: Row) => r.status === "sorti" || r.status === "inactif" || (!!exits[r.id] && exits[r.id] < today), [exits, today]);
+  const outCount = rows.filter(isOut).length;
   const shown = useMemo(() => rows.filter((r) =>
-    (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
+    (showOut ? isOut(r) : !isOut(r)) && (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
     (!fRole || r.role_key === fRole) && (fAcc === "tous" || r.account_status === fAcc),
-  ).sort((a, b) => rank(a) - rank(b)), [rows, q, fRole, fAcc]);
+  ).sort((a, b) => rank(a) - rank(b)), [rows, q, fRole, fAcc, showOut, isOut]);
   const roleColor = (k: string | null) => roles.find((r) => r.key === k)?.color ?? "#64748b";
   const withoutAccess = shown.filter((r) => r.account_status === "sans_compte" && r.status === "actif");
 
@@ -92,7 +100,7 @@ export default function Salaries() {
 
   return (
     <Guard module="salaries">
-      <PageHead title="Salariés" sub={`${rows.length} fiches · ${rows.filter((r) => r.account_status === "actif").length} avec accès`}>
+      <PageHead title="Salariés" sub={`${rows.length - outCount} fiches actives · ${rows.filter((r) => r.account_status === "actif").length} avec accès · ${outCount} sorti(s)`}>
         <button className="btn" onClick={() => downloadCSV("salaries.csv", shown.map(({ id: _id, ...r }) => ({ ...r, salaire_base: salaries[_id] ?? (hidden[_id] ? "masqué" : "") })))}>Export CSV</button>
         {isSuper && <button className="btn" disabled={busy} title="Masquer le salaire de base des fiches affichées aux autres utilisateurs (RH, direction, managers)"
           onClick={() => confirm(`Masquer le salaire de base de ${shown.length} fiche(s) aux autres utilisateurs ?`) && hideSalaries(shown.map((r) => r.id), true)}>🔒 Masquer les salaires</button>}
@@ -107,6 +115,8 @@ export default function Salaries() {
           <option value="">Tous les rôles</option>{roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
         <Tabs value={fAcc} onChange={setFAcc} tabs={[{ key: "tous", label: "Tous" }, { key: "sans_compte", label: "Sans accès" }, { key: "actif", label: "Accès actif" }, { key: "bloque", label: "Bloqués" }]} />
+        <button className={`btn btn-sm ${showOut ? "border-pri text-pri-d" : ""}`} onClick={() => setShowOut(!showOut)}>
+          {showOut ? "← Retour aux actifs" : `Historique des sortis (${outCount})`}</button>
         {canEdit && (
           <div className="flex flex-wrap gap-2 sm:ml-auto">
             {sel.length > 0 && <button className="btn-pri" disabled={busy} onClick={() => createAccess(sel)}>Créer l&apos;accès ({sel.length})</button>}
@@ -130,7 +140,7 @@ export default function Salaries() {
                 <td className="mut">@{r.username}</td>
                 <td><span className="badge" style={{ background: roleColor(r.role_key) + "1f", color: roleColor(r.role_key) }}>{r.role_label}</span></td>
                 <td>{r.section}</td>
-                <td className="mut">{dfr(r.hire_date)}</td>
+                <td className="mut whitespace-nowrap">{dfr(r.hire_date)}{exits[r.id] && <div className="text-[11.5px] text-warn">sortie {dfr(exits[r.id])}</div>}</td>
                 <td className="whitespace-nowrap text-right">
                   <span className={salaries[r.id] == null && hidden[r.id] ? "mut italic" : ""}>{salaryCell(r.id)}</span>
                   {isSuper ? (
@@ -164,9 +174,17 @@ export default function Salaries() {
 
 const EMPTY = {
   matricule: "", username: "", first_name: "", last_name: "", role_key: "brute", department_id: "", manager_id: "", job_title: "", hire_date: "",
-  contract_type: "CDI", contract_end: "", trial_end: "", cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
 };
-const COMP = { base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "" };
+const COMP = {
+  base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
+  cnss_mode: "plafonne", cnss_base: 6000 as number | string, ir_applies: false, in_payroll: true, pay_method: "",
+};
+const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method";
+const CNSS_MODES: [string, string][] = [
+  ["plafonne", "Plafonné (base CNSS fixe)"], ["declare", "Déclaré (salaire réel)"], ["offert", "Offert (payé par l'employeur)"],
+  ["tahfiz", "Tahfiz (exonéré)"], ["non_declare", "Non déclaré"],
+];
 
 function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id: string | null; salary: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void }) {
   const { me, isSuper } = useSession();
@@ -177,10 +195,11 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
     if (!id) return;
     supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : "")])) as typeof EMPTY));
     // base_salary n'est pas lisible directement (salaire masquable) : affiché via `salary`
-    supabase.from("employee_compensation").select("transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib").eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, (data as Record<string, unknown>)[k] ?? ""])) as typeof COMP));
+    supabase.from("employee_compensation").select(COMP_COLS).eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, (data as Record<string, unknown>)[k] ?? (k in COMP && typeof COMP[k as keyof typeof COMP] === "boolean" ? COMP[k as keyof typeof COMP] : "")])) as typeof COMP));
   }, [id]);
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
-  const setc = (k: keyof typeof COMP) => (e: React.ChangeEvent<HTMLInputElement>) => setC({ ...c, [k]: e.target.value });
+  const setc = (k: keyof typeof COMP) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setC({ ...c, [k]: e.target instanceof HTMLInputElement && e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const nn = (v: unknown) => (v === "" ? null : v);
   const sensitive = (k: string) => { const r = roles.find((x) => x.key === k); return !!r && (r.locked || r.kind === "rh" || r.kind === "admin"); };
 
@@ -190,7 +209,11 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, nn(v)])),
         username: f.username.trim().toLowerCase(), children_count: Number(f.children_count) || 0, company_id: me!.company_id,
       };
-      const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib) };
+      // Date de sortie passée → statut « sorti » (fiche en historique, paie au prorata du mois de sortie)
+      if (f.exit_date && f.exit_date <= new Date().toISOString().slice(0, 10)) row.status = "sorti";
+      if (!f.exit_date && f.status === "sorti") throw new Error("Indiquez la date de sortie.");
+      const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib),
+        cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method) };
       if (id) {
         if (!row.email) delete row.email; // ne jamais vider l'e-mail de connexion
         must(await supabase.from("profiles").update(row).eq("id", id));
@@ -217,7 +240,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
           <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
         <Field label="Responsable"><select className="inp" value={f.manager_id} onChange={set("manager_id")}>
           <option value="">—</option>{people.filter((p) => p.id !== id && p.status === "actif").map((p) => <option key={p.id} value={p.id}>{fullName(p)}</option>)}</select></Field>
-        <Field label="Poste"><input className="inp" value={f.job_title} onChange={set("job_title")} /></Field>
+        <Field label="Poste"><input className="inp" value={f.job_title} placeholder="intitulé réel du poste" onChange={set("job_title")} /></Field>
         <Field label="Statut"><select className="inp" value={f.status} onChange={set("status")}><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="sorti">Sorti</option></select></Field>
       </div>
       <h3 className="mb-2 mt-2">Contrat</h3>
@@ -226,7 +249,9 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Embauche"><input type="date" className="inp" value={f.hire_date} onChange={set("hire_date")} /></Field>
         <Field label="Fin d'essai"><input type="date" className="inp" value={f.trial_end} onChange={set("trial_end")} /></Field>
         <Field label="Fin de contrat"><input type="date" className="inp" value={f.contract_end} onChange={set("contract_end")} /></Field>
+        <Field label="Date de sortie"><input type="date" className="inp" value={f.exit_date} onChange={set("exit_date")} /></Field>
       </div>
+      {f.exit_date && <p className="-mt-1 mb-2 text-[12.5px] text-warn">Sortie le {dfr(f.exit_date)} : payé(e) au prorata des jours ouvrables jusqu&apos;à cette date, puis retiré(e) de la liste active (historique).</p>}
       <h3 className="mb-2 mt-2">Coordonnées & famille</h3>
       <div className="grid gap-x-3 sm:grid-cols-3">
         <Field label="CIN"><input className="inp" value={f.cin} onChange={set("cin")} /></Field>
@@ -247,6 +272,18 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Indemnité panier"><input type="number" className="inp" value={c.meal_allowance} onChange={setc("meal_allowance")} /></Field>
         <Field label="N° CNSS"><input className="inp" value={c.cnss_number} onChange={setc("cnss_number")} /></Field>
         <Field label="RIB"><input className="inp" value={c.rib} onChange={setc("rib")} /></Field>
+      </div>
+      <h3 className="mb-2 mt-2">CNSS & paiement</h3>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="Mode CNSS"><select className="inp" value={c.cnss_mode} onChange={setc("cnss_mode")}>
+          {CNSS_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+        {["plafonne", "offert"].includes(c.cnss_mode)
+          ? <Field label="Base CNSS déclarée (DH)"><input type="number" className="inp" value={c.cnss_base} onChange={setc("cnss_base")} /></Field>
+          : <div />}
+        <Field label="Reste à prendre payé par"><select className="inp" value={c.pay_method} onChange={setc("pay_method")}>
+          <option value="">Auto (virement si RIB valide, sinon espèces)</option><option value="virement">Virement</option><option value="especes">Espèces</option></select></Field>
+        <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.ir_applies} onChange={setc("ir_applies")} /> Retenir l&apos;IR</label>
+        <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={!!c.in_payroll} onChange={setc("in_payroll")} /> Inclus dans la paie</label>
       </div>
       <div className="flex justify-end gap-2">
         <button className="btn" onClick={onClose}>Annuler</button>
@@ -296,7 +333,7 @@ function ImportModal({ roles, depts, onClose, onDone }: { roles: Role[]; depts: 
             const created = must(await supabase.from("profiles").insert({
               company_id: me!.company_id, matricule: matricule || null, username: (username || "").toLowerCase(), first_name, last_name: last_name ?? "",
               role_key: role_key || "brute", department_id: depts.find((d) => d.name.toLowerCase() === (section ?? "").toLowerCase())?.id ?? null,
-              hire_date: hire || null, job_title: roles.find((r) => r.key === (role_key || "brute"))?.label ?? null,
+              hire_date: hire || null,
             }).select("id").single()) as { id: string };
             must(await supabase.from("employee_compensation").upsert({ profile_id: created.id, base_salary: Number(salary) || 0 }));
           }

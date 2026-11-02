@@ -65,8 +65,38 @@ export default function Paie() {
     || Number(a.pay_mode === "rdv") - Number(b.pay_mode === "rdv")
     || Number(b.net_pay) - Number(a.net_pay)
     || name(a.profile_id).localeCompare(name(b.profile_id)));
-  const metaSum = (k: "reste_a_prendre" | "especes" | "advances") => slips.reduce((a, s) => a + Number(s.meta?.[k] ?? 0), 0);
+  const metaSum = (k: "reste_a_prendre" | "especes" | "advances" | "virement") => slips.reduce((a, s) => a + Number(s.meta?.[k] ?? 0), 0);
   const autoDays = slips.find((s) => s.meta?.working_days != null)?.meta?.working_days;
+  const method = (s: Slip) => s.pay_method ?? s.meta?.pay_method ?? "virement";
+  const canPayMethod = canEdit && cur?.status !== "cloturee";
+  const setMethod = (s: Slip, m: string) => run(async () => {
+    must(await supabase.rpc("set_payslip_pay_method", { p_slip: s.id, p_method: m }));
+    await loadPeriod();
+  }, m === "virement" ? "Payé par virement" : "Payé en espèces");
+
+  // Virement de masse : tous les bulletins « Virement » d'une période validée.
+  type TransferRow = { profile_id: string; full_name: string; cin: string | null; rib: string; rib_ok: boolean; amount: number; ref: string };
+  const massTransfer = () => run(async () => {
+    if (!cur) return;
+    const rows = (must(await supabase.rpc("mass_transfer_rows", { p_period: cur.id })) as TransferRow[]) ?? [];
+    if (!rows.length) throw new Error("Aucun salarié à payer par virement sur cette période.");
+    const bad = rows.filter((r) => !r.rib_ok);
+    if (bad.length && !confirm(`${bad.length} RIB invalide(s) : ${bad.map((r) => r.full_name).join(", ")}.\nLes inclure quand même (à corriger avant envoi à la banque) ?`)) return;
+    const total = rows.reduce((a, r) => a + Number(r.amount), 0);
+    downloadCSV(`virement-masse-${cur.month.slice(0, 7)}.csv`, rows.map((r, i) => ({
+      n: i + 1, beneficiaire: r.full_name, cin: r.cin ?? "", rib: r.rib, montant: Number(r.amount).toFixed(2), motif: r.ref, rib_valide: r.rib_ok ? "oui" : "NON",
+    })));
+    const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+    printHtml(`Virement de masse — ${monthLabel(cur.month)}`, `
+      <h2 style="margin:0 0 4px">Ordre de virement de masse — ${esc(monthLabel(cur.month))}</h2>
+      <p style="margin:0 0 12px;color:#555">${rows.length} bénéficiaire(s) · Total ${esc(dh(total))}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr>${["N°", "Bénéficiaire", "CIN", "RIB", "Montant (DH)", "Motif"].map((h) => `<th style="text-align:left;border-bottom:1px solid #999;padding:4px">${h}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map((r, i) => `<tr${r.rib_ok ? "" : ' style="background:#fee2e2"'}><td style="padding:4px">${i + 1}</td><td style="padding:4px">${esc(r.full_name)}</td><td style="padding:4px">${esc(r.cin ?? "")}</td><td style="padding:4px;font-family:monospace">${esc(r.rib)}</td><td style="padding:4px;text-align:right">${Number(r.amount).toFixed(2)}</td><td style="padding:4px">${esc(r.ref)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="4" style="padding:6px 4px;border-top:1px solid #999;font-weight:bold">Total</td><td style="padding:6px 4px;border-top:1px solid #999;text-align:right;font-weight:bold">${total.toFixed(2)}</td><td style="border-top:1px solid #999"></td></tr></tfoot>
+      </table>
+      <p style="margin-top:40px">Signature et cachet :</p>`);
+  }, "Fichier de virement généré");
 
   return (
     <Guard module="paie">
@@ -112,25 +142,26 @@ export default function Paie() {
               tranche: s.pay_mode === "rdv" ? s.meta?.step_label ?? "" : "Salaire fixe", rdv_comptes: s.meta?.rdv_counted ?? "", ratio: s.meta?.ratio ?? "",
               salaire: s.meta?.salary ?? s.base_salary, assiduite: s.meta?.assiduite ?? "", challenge: s.meta?.challenge ?? "", brut: s.gross,
               cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, challenges_verses: s.meta?.challenge_paid ?? 0, avances: s.meta?.advances ?? 0,
-              reste_a_prendre: s.meta?.reste_a_prendre ?? s.net_pay, especes: s.meta?.especes ?? 0, verse: s.net_pay,
+              reste_a_prendre: s.meta?.reste_a_prendre ?? s.net_pay, paiement: method(s), virement: s.meta?.virement ?? 0, especes: s.meta?.especes ?? 0, verse: s.net_pay,
               charges_patronales: s.employer_charges, cout_total: s.employer_cost,
             })))}>Journal de paie (CSV)</button>
+            {canEdit && ["validee", "cloturee"].includes(cur.status) && <button className="btn" disabled={busy || !slips.length} onClick={massTransfer}>Virement de masse</button>}
           </div>
         </div>
         <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi label="Masse salariale brute" value={dh(sum("gross"))} />
-          <Kpi label="Reste à prendre (virements)" value={dh(metaSum("reste_a_prendre"))} tone="text-pri-d" />
-          <Kpi label="Espèces (challenges)" value={dh(metaSum("especes"))} hint={`Avances : ${dh(metaSum("advances"))}`} />
+          <Kpi label="Virements" value={dh(metaSum("virement"))} tone="text-pri-d" hint={`${slips.filter((s) => method(s) === "virement").length} salarié(s) · reste à prendre ${dh(metaSum("reste_a_prendre"))}`} />
+          <Kpi label="Espèces" value={dh(metaSum("especes"))} hint={`Challenges + reste en espèces · avances : ${dh(metaSum("advances"))}`} />
           <Kpi label="Coût total employeur" value={dh(sum("employer_cost"))} hint={`${slips.length} bulletin(s)`} />
         </div>
         <Tabs value={tab} onChange={setTab} tabs={[{ key: "bulletins", label: "Bulletins" }, { key: "variables", label: `Éléments variables (${inputs.length})` }]} />
-        <div className="card overflow-x-auto p-0">
+        <div className="card max-h-[calc(100vh-9rem)] overflow-auto p-0">
           {tab === "bulletins" ? (slips.length === 0 ? <Empty>Cliquez sur « Calculer la paie ».</Empty> : (
-            <table className="tbl">
-              <thead><tr><th>Salarié</th><th>Tranche</th><th className="text-right">Brut</th><th className="text-right">Part sal.</th><th className="text-right">Chall. versés</th><th className="text-right">Avances</th><th className="text-right">Reste à prendre</th><th className="text-right">Versé</th><th /></tr></thead>
+            <table className="tbl [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_#e5e7eb]">
+              <thead><tr><th>Salarié</th><th>Tranche</th><th className="text-right">Brut</th><th className="text-right">Part sal.</th><th className="text-right">Chall. versés</th><th className="text-right">Avances</th><th className="text-right">Reste à prendre</th><th className="text-right">Versé</th><th>Paiement</th><th /></tr></thead>
               <tbody>{ordered.map((s) => (
                 <tr key={s.id}>
-                  <td className="font-medium">{name(s.profile_id)}</td>
+                  <td className="font-medium">{name(s.profile_id)}{s.meta?.exit_date && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Prorata : ${s.meta.days_present} j / ${s.meta.working_days} j`}>sorti le {new Date(s.meta.exit_date).toLocaleDateString("fr-FR")}</span>}</td>
                   <td className="whitespace-nowrap">{s.pay_mode === "rdv"
                     ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <span className="mut"> · {num(s.meta.ratio, 2)}/j</span>}</>
                     : <span className="mut">Salaire fixe{(s.meta?.rdv_ok ?? 0) > 0 ? ` + ${s.meta?.rdv_ok} RDV OK` : ""}</span>}</td>
@@ -138,6 +169,14 @@ export default function Paie() {
                   <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee) + Number(s.ir), 2)}</td>
                   <td className="text-right">{num(s.meta?.challenge_paid ?? 0, 2)}</td><td className="text-right">{num(s.meta?.advances ?? 0, 2)}</td>
                   <td className="text-right font-semibold">{num(s.meta?.reste_a_prendre ?? s.net_pay, 2)}</td><td className="text-right">{num(s.net_pay, 2)}</td>
+                  <td className="whitespace-nowrap">
+                    <label className={"flex items-center gap-1.5 text-[12.5px]" + (canPayMethod ? " cursor-pointer" : "")} title="Coché = virement bancaire, décoché = espèces">
+                      <input type="checkbox" disabled={!canPayMethod || busy} checked={method(s) === "virement"}
+                        onChange={(e) => setMethod(s, e.target.checked ? "virement" : "especes")} />
+                      {method(s) === "virement" ? "Virement" : "Espèces"}
+                      {method(s) === "virement" && s.meta?.rib_ok === false && <span className="text-red-600" title="RIB manquant ou invalide">⚠ RIB</span>}
+                    </label>
+                  </td>
                   <td className="text-right"><button className="btn btn-sm" onClick={() => setView(s)}>Bulletin</button></td>
                 </tr>))}</tbody>
             </table>

@@ -163,7 +163,7 @@ export default function Admin() {
         username: f.username.trim().toLowerCase(),
         email: f.email.trim().toLowerCase() || null,
         children_count: Number(f.children_count) || 0,
-        job_title: f.job_title.trim() || roles.find((r) => r.key === f.role_key)?.label || null,
+        job_title: f.job_title.trim() || null,
         account_status: "sans_compte",
       }).select("id").single()) as { id: string };
 
@@ -459,7 +459,7 @@ function AjouterSalarie(
             {gens.filter((g) => g.status === "actif").map((g) => <option key={g.id} value={g.id}>{fullName(g)}</option>)}
           </select>
         </Field>
-        <Field label="Poste"><input className="inp" value={f.job_title} onChange={set("job_title")} placeholder="par défaut : le libellé du rôle" /></Field>
+        <Field label="Poste"><input className="inp" value={f.job_title} onChange={set("job_title")} placeholder="intitulé réel du poste (facultatif)" /></Field>
         <Field label="Statut">
           <select className="inp" value={f.status} onChange={set("status")}>
             <option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="sorti">Sorti</option>

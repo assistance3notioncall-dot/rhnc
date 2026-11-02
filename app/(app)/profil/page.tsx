@@ -26,12 +26,16 @@ export default function Profil() {
   }, [me]);
   if (!me) return null;
 
-  const rows: [string, React.ReactNode][] = [
-    ["Matricule", me.matricule], ["Identifiant", "@" + me.username], ["Rôle", roleLabel], ["Poste", me.job_title], ["Section", dept],
+  // Pas de doublons : le poste n'est affiché que s'il diffère du rôle, la section que si le rôle ne la contient pas déjà
+  const same = (x?: string | null, y?: string | null) => !!x && !!y && (y.toLowerCase().includes(x.toLowerCase()) || x.toLowerCase().includes(y.toLowerCase()));
+  const poste = same(me.job_title, roleLabel) ? null : me.job_title;
+  const rows: [string, React.ReactNode][] = ([
+    ["Matricule", me.matricule], ["Identifiant", "@" + me.username], ["Rôle", roleLabel],
+    ...(poste ? [["Poste", poste]] : []), ...(dept && !same(dept, roleLabel) ? [["Section", dept]] : []),
     ["Responsable", manager], ["Date d'embauche", dfr(me.hire_date)], ["Contrat", me.contract_type], ["E-mail", me.email?.endsWith("rh360.local") ? "—" : me.email],
     ["Téléphone", me.phone], ["CIN", me.cin], ["Situation familiale", me.family_status], ["Enfants", me.children_count], ["Adresse", me.address],
     ["Contact d'urgence", me.emergency_contact],
-  ];
+  ] as [string, React.ReactNode][]);
   return (
     <Guard module="profil">
       <PageHead title="Mon profil">
@@ -42,7 +46,7 @@ export default function Profil() {
         <div className="card text-center">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-pri-l text-xl font-bold text-pri-d">{initials(me)}</div>
           <h2 className="mt-3">{fullName(me)}</h2>
-          <p className="mut">{me.job_title ?? roleLabel}</p>
+          <p className="mut">{poste ?? roleLabel}</p>
           {comp && (
             <div className="mt-4 rounded-lg bg-gray2-l p-3 text-left text-[13px]">
               <div className="flex justify-between"><span className="mut">Salaire de base</span><b>{dh(comp.base_salary)}</b></div>

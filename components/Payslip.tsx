@@ -16,6 +16,10 @@ export type SlipMeta = {
   cnss_mode?: string; cnss_base?: number; amo_base?: number; employee_share?: number;
   challenge_paid?: number; advances?: number; advances_count?: number; other_deductions?: number;
   reste_a_prendre?: number; virement?: number; especes?: number; transfer_ref?: string;
+  /** 'virement' ou 'especes' pour le reste à prendre ; rib_ok = RIB valide (24 chiffres, clé 97). */
+  pay_method?: string; rib_ok?: boolean;
+  /** Sortie en cours de mois : date, jours présents et montant retiré au prorata. */
+  exit_date?: string | null; days_present?: number; prorata?: number;
 };
 
 export type Slip = {
@@ -26,6 +30,7 @@ export type Slip = {
   /** Ordre d'affichage calculé en base : staff d'abord, puis agents du net le plus haut au plus bas. */
   sort_rank?: number | null;
   meta?: SlipMeta | null;
+  pay_method?: string | null;
 };
 
 const CNSS_LABEL: Record<string, string> = {
@@ -241,14 +246,15 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
             <Row k="Salaire" v={m(salary + assid)} />
             {isAgent && <Row k="Challenge" v={m(chal)} />}
             {prime > 0 && <Row k="Prime & autres" v={m(prime)} />}
+            {Number(meta.prorata ?? 0) > 0 && <Row k={`Prorata sortie (${meta.days_present} j / ${meta.working_days} j)`} v={"−" + m(meta.prorata)} />}
             <Row k="Total" v={m(gross)} strong />
           </Card>
         </Box>
         <Box title="Moyen de paiement">
           <Card className="py-1.5">
             <Row k="Virement bancaire" v={m(hasMeta ? meta.virement : reste)} />
-            {especes > 0 && <Row k="Espèces (challenges du mois)" v={m(especes)} />}
-            <Row k="Ordre de virement" v={meta.transfer_ref ?? "—"} mono={false} />
+            {especes > 0 && <Row k={meta.pay_method === "especes" ? "Espèces" : "Espèces (challenges du mois)"} v={m(especes)} />}
+            {meta.pay_method !== "especes" && <Row k="Ordre de virement" v={meta.transfer_ref ?? "—"} mono={false} />}
             <Row k="Versé" v={m(Number(hasMeta ? meta.virement : reste) + especes)} strong />
           </Card>
         </Box>
