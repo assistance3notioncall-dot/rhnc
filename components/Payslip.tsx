@@ -22,6 +22,8 @@ export type SlipMeta = {
   exit_date?: string | null; days_present?: number; prorata?: number;
   /** Plan confirmé : qualité des RDV confirmés (OK ÷ RDV avec verdict) et prime du palier. */
   conf_ok?: number; conf_total?: number; conf_rate?: number; conf_prime?: number;
+  /** Chef d'équipe qualif : primes équipe (par agent, mensuelle, challenge journalier). */
+  sup_prime?: number; sup_team_month?: number; sup_days?: number;
 };
 
 export type Slip = {

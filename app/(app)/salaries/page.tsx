@@ -286,7 +286,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
           <option value="">Auto (virement si RIB valide, sinon espèces)</option><option value="virement">Virement</option><option value="especes">Espèces</option></select></Field>
         <Field label="Plan de rémunération"><select className="inp" value={c.pay_plan} onChange={setc("pay_plan")}>
           <option value="">Standard (salaire de base + 150 DH / RDV OK)</option>
-          <option value="confirme">Confirmé : base 5 000 + prime qualité + 150 DH / déballe</option></select></Field>
+          <option value="confirme">Confirmé : base 5 000 + prime qualité + 150 DH / déballe</option>
+          <option value="sup_qualif">Chef d&apos;équipe qualif : base 5 000 + primes équipe qualif + 150 DH / RDV OK</option></select></Field>
         {c.pay_plan === "confirme" ? <Field label="Code(s) confirmateur dans les stats"><input className="inp" placeholder="ex. AS"
           value={Array.isArray(c.cnf_codes) ? c.cnf_codes.join(", ") : c.cnf_codes} onChange={setc("cnf_codes")} /></Field> : <div />}
         <div />
