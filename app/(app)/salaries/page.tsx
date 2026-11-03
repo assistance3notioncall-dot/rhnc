@@ -13,8 +13,8 @@ type Dept = { id: string; name: string };
 type Cred = { name: string; username?: string; temp_password?: string; error?: string };
 
 // Ordre de la liste : actifs en haut, puis bloqués, suspendus, puis sortis / inactifs (ordre du matricule conservé dans chaque groupe)
-// Trois groupes : Direction, Back office, Agents (profiles.groupe)
-const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"]];
+// Groupes : Direction, Back office, Agents, Entretien & logistique (profiles.groupe)
+const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
 const groupRank = (g?: string) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
 const rank = (r: { status: string; account_status: string }) =>
   r.status === "actif" ? (r.account_status === "bloque" ? 1 : 0) : r.status === "suspendu" ? 2 : 3;
