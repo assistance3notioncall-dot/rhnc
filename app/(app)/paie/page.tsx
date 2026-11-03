@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
@@ -9,7 +9,11 @@ import { dh, downloadCSV, fullName, monthLabel, monthStart, num } from "@/lib/fo
 import { printHtml } from "@/lib/print";
 
 type Period = { id: string; month: string; status: string; computed_at: string | null; validated_at: string | null; working_days: number | null };
-type Person = { id: string; first_name: string; last_name: string; matricule: string | null };
+type Person = { id: string; first_name: string; last_name: string; matricule: string | null; groupe: string | null };
+// Même regroupement que la page Salariés (profiles.groupe)
+const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
+const groupRank = (g?: string | null) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
+const groupLabel = (g?: string | null) => GROUPS.find(([k]) => k === g)?.[1] ?? "Sans groupe";
 type Input = { id: number; profile_id: string; code: string; label: string; kind: string; quantity: number | null; amount: number | null; cotisable: boolean; imposable: boolean };
 
 const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; cotisable?: boolean; imposable?: boolean }> = {
@@ -36,6 +40,7 @@ export default function Paie() {
   const [newMonth, setNewMonth] = useState(monthStart().slice(0, 7));
   const [newDays, setNewDays] = useState("");
   const [days, setDays] = useState("");
+  const [fGroup, setFGroup] = useState("tous");
   const { busy, run } = useAction();
 
   const loadPeriods = useCallback(async () => {
@@ -52,7 +57,7 @@ export default function Paie() {
     ]);
     setSlips((s as Slip[]) ?? []); setInputs((i as Input[]) ?? []);
   }, [cur]);
-  useEffect(() => { loadPeriods(); supabase.from("profiles").select("id,first_name,last_name,matricule").order("first_name").then(({ data }) => setPeople((data as Person[]) ?? [])); }, [loadPeriods]);
+  useEffect(() => { loadPeriods(); supabase.from("profiles").select("id,first_name,last_name,matricule,groupe").order("first_name").then(({ data }) => setPeople((data as Person[]) ?? [])); }, [loadPeriods]);
   useEffect(() => { loadPeriod(); }, [loadPeriod]);
   useEffect(() => { setDays(cur?.working_days != null ? String(cur.working_days) : ""); }, [cur]);
 
@@ -60,8 +65,10 @@ export default function Paie() {
   const open = cur && ["ouverte", "calculee"].includes(cur.status);
   const sum = (k: keyof Slip) => slips.reduce((a, s) => a + Number(s[k] ?? 0), 0);
   // Staff (salaire fixe) d'abord, puis agents RDV du net le plus haut au plus bas — même ordre que sort_rank en base.
-  const ordered = [...slips].sort((a, b) =>
-    (a.sort_rank ?? Infinity) - (b.sort_rank ?? Infinity)
+  const grp = (id: string) => people.find((p) => p.id === id)?.groupe ?? null;
+  const ordered = [...slips].filter((s) => fGroup === "tous" || grp(s.profile_id) === fGroup).sort((a, b) =>
+    groupRank(grp(a.profile_id)) - groupRank(grp(b.profile_id))
+    || (a.sort_rank ?? Infinity) - (b.sort_rank ?? Infinity)
     || Number(a.pay_mode === "rdv") - Number(b.pay_mode === "rdv")
     || Number(b.net_pay) - Number(a.net_pay)
     || name(a.profile_id).localeCompare(name(b.profile_id)));
@@ -138,7 +145,7 @@ export default function Paie() {
               must(await supabase.rpc("validate_payroll", { p_period: cur.id })); await loadPeriods();
             }, "Paie validée — bulletins publiés")}>Valider & publier</button>}
             <button className="btn" disabled={!slips.length} onClick={() => downloadCSV(`paie-${cur.month}.csv`, ordered.map((s) => ({
-              matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id),
+              groupe: groupLabel(grp(s.profile_id)), matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id),
               tranche: s.pay_mode === "rdv" ? s.meta?.step_label ?? "" : "Salaire fixe", rdv_comptes: s.meta?.rdv_counted ?? "", ratio: s.meta?.ratio ?? "",
               salaire: s.meta?.salary ?? s.base_salary, assiduite: s.meta?.assiduite ?? "", challenge: s.meta?.challenge ?? "", brut: s.gross,
               cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, challenges_verses: s.meta?.challenge_paid ?? 0, avances: s.meta?.advances ?? 0,
@@ -155,12 +162,32 @@ export default function Paie() {
           <Kpi label="Coût total employeur" value={dh(sum("employer_cost"))} hint={`${slips.length} bulletin(s)`} />
         </div>
         <Tabs value={tab} onChange={setTab} tabs={[{ key: "bulletins", label: "Bulletins" }, { key: "variables", label: `Éléments variables (${inputs.length})` }]} />
+        {tab === "bulletins" && slips.length > 0 && (
+          <div className="mb-3"><Tabs value={fGroup} onChange={setFGroup} tabs={[{ key: "tous", label: `Tous (${slips.length})` },
+            ...GROUPS.map(([k, l]) => ({ key: k, label: `${l} (${slips.filter((s) => grp(s.profile_id) === k).length})` }))
+              .filter((t) => !t.label.endsWith("(0)"))]} /></div>)}
         <div className="card max-h-[calc(100vh-9rem)] overflow-auto p-0">
           {tab === "bulletins" ? (slips.length === 0 ? <Empty>Cliquez sur « Calculer la paie ».</Empty> : (
             <table className="tbl [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_#e5e7eb]">
               <thead><tr><th>Salarié</th><th>Tranche</th><th className="text-right">Brut</th><th className="text-right">Part sal.</th><th className="text-right">Chall. versés</th><th className="text-right">Avances</th><th className="text-right">Reste à prendre</th><th className="text-right">Versé</th><th>Paiement</th><th /></tr></thead>
-              <tbody>{ordered.map((s) => (
-                <tr key={s.id}>
+              <tbody>{ordered.map((s, i) => {
+                const g = grp(s.profile_id);
+                const head = i === 0 || grp(ordered[i - 1].profile_id) !== g;
+                const inG = ordered.filter((x) => grp(x.profile_id) === g);
+                const tot = (f: (x: Slip) => number) => inG.reduce((a, x) => a + f(x), 0);
+                return (<Fragment key={s.id}>
+                {head && (
+                  <tr className="bg-gray2-l">
+                    <td colSpan={2} className="py-1.5 text-[12px] font-bold uppercase tracking-wide text-pri-d">{groupLabel(g)} <span className="mut font-normal normal-case">· {inG.length} bulletin(s)</span></td>
+                    <td className="text-right text-[12px] font-semibold">{num(tot((x) => Number(x.gross)), 2)}</td>
+                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.cnss_employee) + Number(x.amo_employee) + Number(x.ir)), 2)}</td>
+                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.meta?.challenge_paid ?? 0)), 2)}</td>
+                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.meta?.advances ?? 0)), 2)}</td>
+                    <td className="text-right text-[12px] font-semibold">{num(tot((x) => Number(x.meta?.reste_a_prendre ?? x.net_pay)), 2)}</td>
+                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.net_pay)), 2)}</td>
+                    <td colSpan={2} />
+                  </tr>)}
+                <tr>
                   <td className="font-medium">{name(s.profile_id)}{s.meta?.exit_date && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Prorata : ${s.meta.days_present} j / ${s.meta.working_days} j`}>sorti le {new Date(s.meta.exit_date).toLocaleDateString("fr-FR")}</span>}</td>
                   <td className="whitespace-nowrap">{s.pay_mode === "rdv"
                     ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <span className="mut"> · {num(s.meta.ratio, 2)}/j</span>}</>
@@ -178,7 +205,8 @@ export default function Paie() {
                     </label>
                   </td>
                   <td className="text-right"><button className="btn btn-sm" onClick={() => setView(s)}>Bulletin</button></td>
-                </tr>))}</tbody>
+                </tr></Fragment>);
+              })}</tbody>
             </table>
           )) : (<>
             {canEdit && open && <div className="p-3"><button className="btn-pri btn-sm" onClick={() => setAddInput(true)}>+ Ajouter un élément</button></div>}
