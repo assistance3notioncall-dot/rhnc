@@ -65,8 +65,9 @@ function WeekTable({ title, data, csv }: { title: string; data: ReturnType<typeo
 }
 
 export default function Stats() {
-  const { can } = useSession();
-  const canDelete = can("stats", true);
+  const { can, me, isSuper } = useSession();
+  // Même règle que delete_rdv_weeks : RH / admin, super admin, ou droit Stats en modification
+  const canDelete = isSuper || me?.role === "rh" || me?.role === "admin" || can("stats", true);
   const { busy, run } = useAction();
   const [reload, setReload] = useState(0);
   const [selW, setSelW] = useState<string[]>([]);
