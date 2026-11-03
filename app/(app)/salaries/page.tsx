@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
@@ -13,6 +13,9 @@ type Dept = { id: string; name: string };
 type Cred = { name: string; username?: string; temp_password?: string; error?: string };
 
 // Ordre de la liste : actifs en haut, puis bloqués, suspendus, puis sortis / inactifs (ordre du matricule conservé dans chaque groupe)
+// Trois groupes : Direction, Back office, Agents (profiles.groupe)
+const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"]];
+const groupRank = (g?: string) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
 const rank = (r: { status: string; account_status: string }) =>
   r.status === "actif" ? (r.account_status === "bloque" ? 1 : 0) : r.status === "suspendu" ? 2 : 3;
 
@@ -31,6 +34,8 @@ export default function Salaries() {
   // Sortis (date de sortie passée ou statut « sorti ») : masqués de la liste active, consultables en historique
   const [showOut, setShowOut] = useState(false);
   const [exits, setExits] = useState<Record<string, string>>({});
+  const [groups, setGroups] = useState<Record<string, string>>({});
+  const [fGroup, setFGroup] = useState("tous");
   const [sel, setSel] = useState<string[]>([]);
   const [edit, setEdit] = useState<string | "new" | null>(null);
   const [creds, setCreds] = useState<Cred[] | null>(null);
@@ -44,9 +49,11 @@ export default function Salaries() {
       supabase.from("app_roles").select("key,label,kind,locked,color").order("label"),
       supabase.from("departments").select("id,name").order("name"),
       supabase.rpc("visible_base_salaries"),
-      supabase.from("profiles").select("id,exit_date").not("exit_date", "is", null),
+      supabase.from("profiles").select("id,exit_date,groupe"),
     ]);
-    setExits(Object.fromEntries(((ex as { id: string; exit_date: string }[] | null) ?? []).map((x) => [x.id, x.exit_date])));
+    const px = (ex as { id: string; exit_date: string | null; groupe: string | null }[] | null) ?? [];
+    setExits(Object.fromEntries(px.filter((x) => x.exit_date).map((x) => [x.id, x.exit_date as string])));
+    setGroups(Object.fromEntries(px.map((x) => [x.id, x.groupe ?? "agents"])));
     setRows((r as Row[]) ?? []); setRoles((ro as Role[]) ?? []); setDepts((d as Dept[]) ?? []);
     const sal = (c as { profile_id: string; base_salary: number | null; hidden: boolean }[] | null) ?? [];
     setSalaries(Object.fromEntries(sal.map((x) => [x.profile_id, x.base_salary == null ? null : Number(x.base_salary)])));
@@ -58,9 +65,11 @@ export default function Salaries() {
   const isOut = useCallback((r: Row) => r.status === "sorti" || r.status === "inactif" || (!!exits[r.id] && exits[r.id] < today), [exits, today]);
   const outCount = rows.filter(isOut).length;
   const shown = useMemo(() => rows.filter((r) =>
-    (showOut ? isOut(r) : !isOut(r)) && (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
+    (showOut ? isOut(r) : !isOut(r)) && (fGroup === "tous" || groups[r.id] === fGroup) && (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
     (!fRole || r.role_key === fRole) && (fAcc === "tous" || r.account_status === fAcc),
-  ).sort((a, b) => rank(a) - rank(b)), [rows, q, fRole, fAcc, showOut, isOut]);
+  ).sort((a, b) => groupRank(groups[a.id]) - groupRank(groups[b.id]) || rank(a) - rank(b)), [rows, q, fRole, fAcc, showOut, isOut, groups, fGroup]);
+  const groupCount = (g: string) => rows.filter((r) => !isOut(r) && groups[r.id] === g).length;
+  const cols = canEdit ? 11 : 10;
   const roleColor = (k: string | null) => roles.find((r) => r.key === k)?.color ?? "#64748b";
   const withoutAccess = shown.filter((r) => r.account_status === "sans_compte" && r.status === "actif");
 
@@ -109,6 +118,7 @@ export default function Salaries() {
         {canEdit && <button className="btn" onClick={() => setImporting(true)}>Importer CSV</button>}
         {canEdit && <button className="btn-pri" onClick={() => setEdit("new")}>+ Nouvelle fiche</button>}
       </PageHead>
+      <div className="mb-3"><Tabs value={fGroup} onChange={setFGroup} tabs={[{ key: "tous", label: "Tous les groupes" }, ...GROUPS.map(([k, l]) => ({ key: k, label: `${l} (${groupCount(k)})` }))]} /></div>
       <div className="card mb-4 flex flex-wrap items-center gap-2 p-3">
         <input className="inp sm:max-w-xs" placeholder="Rechercher (nom, identifiant, matricule)…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="inp w-auto" value={fRole} onChange={(e) => setFRole(e.target.value)}>
@@ -131,8 +141,11 @@ export default function Salaries() {
               {canEdit && <th className="w-8"><input type="checkbox" checked={sel.length > 0 && sel.length === withoutAccess.length} onChange={(e) => setSel(e.target.checked ? withoutAccess.map((r) => r.id) : [])} /></th>}
               <th>Mat.</th><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Section</th><th>Embauche</th><th className="text-right">Salaire base</th><th>Accès</th><th />
             </tr></thead>
-            <tbody>{shown.map((r) => (
-              <tr key={r.id} className={r.status !== "actif" ? "opacity-50" : ""}>
+            <tbody>{shown.map((r, i) => (<Fragment key={r.id}>
+              {(i === 0 || groups[shown[i - 1].id] !== groups[r.id]) && (
+                <tr className="bg-gray2-l"><td colSpan={cols} className="py-1.5 text-[12px] font-bold uppercase tracking-wide text-pri-d">
+                  {GROUPS.find(([k]) => k === groups[r.id])?.[1] ?? "Sans groupe"} <span className="mut font-normal normal-case">· {shown.filter((x) => groups[x.id] === groups[r.id]).length}</span></td></tr>)}
+              <tr className={r.status !== "actif" ? "opacity-50" : ""}>
                 {canEdit && <td>{r.account_status === "sans_compte" && r.status === "actif" && (
                   <input type="checkbox" checked={sel.includes(r.id)} onChange={(e) => setSel(e.target.checked ? [...sel, r.id] : sel.filter((x) => x !== r.id))} />)}</td>}
                 <td className="mut">{r.matricule}</td>
@@ -158,7 +171,7 @@ export default function Salaries() {
                   {canManage(r) && r.account_status === "bloque" && <button className="btn-ok btn-sm ml-1" disabled={busy} onClick={() => setBlocked(r, false)}>Débloquer</button>}
                   {canManage(r) && <button className="btn-no btn-sm ml-1" disabled={busy} title="Supprimer définitivement la fiche et l'accès" onClick={() => deleteEmployee(r)}>Supprimer</button>}
                 </td>
-              </tr>))}
+              </tr></Fragment>))}
             </tbody>
           </table>
         )}
@@ -174,7 +187,7 @@ export default function Salaries() {
 
 const EMPTY = {
   matricule: "", username: "", first_name: "", last_name: "", role_key: "brute", department_id: "", manager_id: "", job_title: "", hire_date: "",
-  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", groupe: "", cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
 };
 const COMP = {
   base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
@@ -238,6 +251,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Identifiant de connexion *"><input className="inp" value={f.username} disabled={!!id && !isSuper} placeholder="ex. ayoub" onChange={set("username")} /></Field>
         <Field label="Rôle"><select className="inp" value={f.role_key} disabled={!!id && !isSuper} onChange={set("role_key")}>
           {roles.filter((r) => isSuper || !sensitive(r.key)).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}</select></Field>
+        <Field label="Groupe"><select className="inp" value={f.groupe} onChange={set("groupe")}>
+          <option value="">Auto (selon le rôle)</option>{GROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Section"><select className="inp" value={f.department_id} onChange={set("department_id")}>
           <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
         <Field label="Responsable"><select className="inp" value={f.manager_id} onChange={set("manager_id")}>
