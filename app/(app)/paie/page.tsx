@@ -47,6 +47,7 @@ const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; coti
   HS100: { label: "Heures sup. +100 %", kind: "gain", qty: true },
   ABS_NP: { label: "Absence non payée (jours)", kind: "gain", qty: true },
   JOURS_TRAV: { label: "Jours travaillés (agents)", kind: "info", qty: true },
+  PRIME_QUALITE: { label: "Prime qualité (montant fixé, confirmés)", kind: "info" },
   PRIME: { label: "Prime & autres (performance)", kind: "gain" },
   AVANCE: { label: "Avance sur salaire", kind: "retenue", cotisable: false, imposable: false },
   RETENUE: { label: "Retenue diverse", kind: "retenue", cotisable: false, imposable: false },
