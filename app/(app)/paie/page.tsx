@@ -14,6 +14,31 @@ type Person = { id: string; first_name: string; last_name: string; matricule: st
 const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
 const groupRank = (g?: string | null) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
 const groupLabel = (g?: string | null) => GROUPS.find(([k]) => k === g)?.[1] ?? "Sans groupe";
+
+// Colonnes du tableau de paie, alignées sur la feuille PayrollNC :
+// Salaire + Assiduité = T.Salaire ; T.Salaire + Challenge = T.Brute ; T.Net = T.Brute − P.Sal ;
+// Reste à prendre = T.Salaire − Avance − P.Sal ; T.Cost = T.Brute + P.Pat
+const n0 = (v: unknown) => Number(v ?? 0) || 0;
+const assidOf = (s: Slip) => n0(s.meta?.assiduite);
+const chalOf = (s: Slip) => s.pay_mode === "rdv" ? n0(s.meta?.challenge) : 0;
+const psalOf = (s: Slip) => n0(s.cnss_employee) + n0(s.amo_employee) + n0(s.ir);
+type Col = { key: string; label: string; hint?: string; get: (s: Slip) => number; band?: string; strong?: boolean; tone?: string; total?: boolean };
+const COLS: Col[] = [
+  { key: "rdv", label: "RDV", hint: "RDV comptés (qualif ÷ 2)", get: (s) => n0(s.meta?.rdv_counted), total: true },
+  { key: "sal", label: "Salaire", hint: "Salaire de base / palier, primes comprises", get: (s) => n0(s.gross) - assidOf(s) - chalOf(s) },
+  { key: "assid", label: "Assiduité", get: assidOf },
+  { key: "tsal", label: "T.Salaire", hint: "Salaire + assiduité", get: (s) => n0(s.gross) - chalOf(s), strong: true, band: "bg-[#f8fafc]" },
+  { key: "chal", label: "Challenge", hint: "Versé en espèces pendant le mois", get: chalOf },
+  { key: "brut", label: "T.Brute", hint: "T.Salaire + challenge", get: (s) => n0(s.gross) },
+  { key: "adv", label: "Avance", get: (s) => n0(s.meta?.advances), tone: "text-[#b45309]" },
+  { key: "decl", label: "Déclaré CNSS", hint: "Salaire déclaré (soumis à cotisation)", get: (s) => n0(s.meta?.cnss_base), band: "bg-[#f0f9ff]" },
+  { key: "psal", label: "P.Sal", hint: "Part salariale CNSS + AMO (+ IR)", get: psalOf, band: "bg-[#f0f9ff]" },
+  { key: "ppat", label: "P.Pat", hint: "Part patronale", get: (s) => n0(s.employer_charges), band: "bg-[#f0f9ff]" },
+  { key: "tnet", label: "T.Net", hint: "T.Brute − P.Sal", get: (s) => n0(s.gross) - psalOf(s) },
+  { key: "reste", label: "Reste à prendre", hint: "T.Salaire − avance − P.Sal", get: (s) => n0(s.meta?.reste_a_prendre ?? s.net_pay), strong: true, tone: "text-[#0f766e]", band: "bg-[#f0fdf4]" },
+  { key: "cost", label: "T.Cost", hint: "Coût total pour NotionCall : T.Brute + P.Pat", get: (s) => n0(s.employer_cost) },
+];
+const CNSS_SHORT: Record<string, string> = { plafonne: "CNSS plafonnée", declare: "CNSS déclarée", offert: "CNSS offerte", tahfiz: "Tahfiz", non_declare: "Non déclaré" };
 type Input = { id: number; profile_id: string; code: string; label: string; kind: string; quantity: number | null; amount: number | null; cotisable: boolean; imposable: boolean };
 
 const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; cotisable?: boolean; imposable?: boolean }> = {
@@ -146,12 +171,9 @@ export default function Paie() {
             }, "Paie validée — bulletins publiés")}>Valider & publier</button>}
             <button className="btn" disabled={!slips.length} onClick={() => downloadCSV(`paie-${cur.month}.csv`, ordered.map((s) => ({
               groupe: groupLabel(grp(s.profile_id)), matricule: people.find((p) => p.id === s.profile_id)?.matricule, salarie: name(s.profile_id),
-              tranche: s.pay_mode === "rdv" ? s.meta?.step_label ?? "" : "Salaire fixe", rdv_comptes: s.meta?.rdv_counted ?? "", ratio: s.meta?.ratio ?? "",
-              salaire: s.meta?.salary ?? s.base_salary, assiduite: s.meta?.assiduite ?? "", challenge: s.meta?.challenge ?? "", brut: s.gross,
-              cnss: s.cnss_employee, amo: s.amo_employee, ir: s.ir, challenges_verses: s.meta?.challenge_paid ?? 0, avances: s.meta?.advances ?? 0,
-              reste_a_prendre: s.meta?.reste_a_prendre ?? s.net_pay, paiement: method(s), virement: s.meta?.virement ?? 0, especes: s.meta?.especes ?? 0, verse: s.net_pay,
-              charges_patronales: s.employer_charges, cout_total: s.employer_cost,
-            })))}>Journal de paie (CSV)</button>
+              tranche: s.pay_mode === "rdv" ? s.meta?.step_label ?? "" : "Salaire fixe", cnss: CNSS_SHORT[s.meta?.cnss_mode ?? ""] ?? "",
+              ...Object.fromEntries(COLS.map((c) => [c.label, c.get(s).toFixed(2)])), paiement: method(s),
+})))}>Journal de paie (CSV)</button>
             {canEdit && ["validee", "cloturee"].includes(cur.status) && <button className="btn" disabled={busy || !slips.length} onClick={massTransfer}>Virement de masse</button>}
           </div>
         </div>
@@ -168,35 +190,36 @@ export default function Paie() {
               .filter((t) => !t.label.endsWith("(0)"))]} /></div>)}
         <div className="card max-h-[calc(100vh-9rem)] overflow-auto p-0">
           {tab === "bulletins" ? (slips.length === 0 ? <Empty>Cliquez sur « Calculer la paie ».</Empty> : (
-            <table className="tbl [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_#e5e7eb]">
-              <thead><tr><th>Salarié</th><th>Tranche</th><th className="text-right">Brut</th><th className="text-right">Part sal.</th><th className="text-right">Chall. versés</th><th className="text-right">Avances</th><th className="text-right">Reste à prendre</th><th className="text-right">Versé</th><th>Paiement</th><th /></tr></thead>
+            <table className="tbl text-[13px] [&_td]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_#e5e7eb]">
+              <thead>
+                <tr className="[&_th]:text-[11px]">
+                  <th className="sticky left-0 z-20 bg-[#fafbfd]">Salarié</th>
+                  {COLS.map((c) => <th key={c.key} className={`text-right ${c.band ?? ""}`} title={c.hint}>{c.label}</th>)}
+                  <th>Paiement</th><th />
+                </tr>
+              </thead>
               <tbody>{ordered.map((s, i) => {
                 const g = grp(s.profile_id);
                 const head = i === 0 || grp(ordered[i - 1].profile_id) !== g;
                 const inG = ordered.filter((x) => grp(x.profile_id) === g);
-                const tot = (f: (x: Slip) => number) => inG.reduce((a, x) => a + f(x), 0);
                 return (<Fragment key={s.id}>
                 {head && (
-                  <tr className="bg-gray2-l">
-                    <td colSpan={2} className="py-1.5 text-[12px] font-bold uppercase tracking-wide text-pri-d">{groupLabel(g)} <span className="mut font-normal normal-case">· {inG.length} bulletin(s)</span></td>
-                    <td className="text-right text-[12px] font-semibold">{num(tot((x) => Number(x.gross)), 2)}</td>
-                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.cnss_employee) + Number(x.amo_employee) + Number(x.ir)), 2)}</td>
-                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.meta?.challenge_paid ?? 0)), 2)}</td>
-                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.meta?.advances ?? 0)), 2)}</td>
-                    <td className="text-right text-[12px] font-semibold">{num(tot((x) => Number(x.meta?.reste_a_prendre ?? x.net_pay)), 2)}</td>
-                    <td className="text-right text-[12px]">{num(tot((x) => Number(x.net_pay)), 2)}</td>
+                  <tr className="bg-gray2-l text-[12px]">
+                    <td className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">{groupLabel(g)} <span className="mut font-normal normal-case">· {inG.length}</span></td>
+                    {COLS.map((c) => <td key={c.key} className={`text-right font-semibold ${c.band ?? ""}`}>{c.total === false ? "" : num(inG.reduce((a, x) => a + c.get(x), 0), 0)}</td>)}
                     <td colSpan={2} />
                   </tr>)}
                 <tr>
-                  <td className="font-medium">{name(s.profile_id)}{s.meta?.exit_date && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Prorata : ${s.meta.days_present} j / ${s.meta.working_days} j`}>sorti le {new Date(s.meta.exit_date).toLocaleDateString("fr-FR")}</span>}</td>
-                  <td className="whitespace-nowrap">{s.pay_mode === "rdv"
-                    ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <span className="mut"> · {num(s.meta.ratio, 2)}/j</span>}</>
-                    : <span className="mut">{(s.meta?.conf_total ?? 0) > 0 ? `Confirmé · qualité ${num(s.meta?.conf_rate ?? 0, 1)} %` : (s.meta?.sup_prime ?? 0) > 0 ? `Chef qualif · primes ${num(s.meta?.sup_prime ?? 0, 0)}` : "Salaire fixe"}{(s.meta?.rdv_ok ?? 0) > 0 ? ` + ${s.meta?.rdv_ok} RDV OK` : ""}</span>}</td>
-                  <td className="text-right">{num(s.gross, 2)}</td>
-                  <td className="text-right">{num(Number(s.cnss_employee) + Number(s.amo_employee) + Number(s.ir), 2)}</td>
-                  <td className="text-right">{num(s.meta?.challenge_paid ?? 0, 2)}</td><td className="text-right">{num(s.meta?.advances ?? 0, 2)}</td>
-                  <td className="text-right font-semibold">{num(s.meta?.reste_a_prendre ?? s.net_pay, 2)}</td><td className="text-right">{num(s.net_pay, 2)}</td>
-                  <td className="whitespace-nowrap">
+                  <td className="sticky left-0 z-[1] bg-white">
+                    <div className="font-medium">{name(s.profile_id)}{s.meta?.exit_date && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Prorata : ${s.meta.days_present} j / ${s.meta.working_days} j`}>sorti le {new Date(s.meta.exit_date).toLocaleDateString("fr-FR")}</span>}</div>
+                    <div className="mut text-[11.5px]">{s.pay_mode === "rdv"
+                      ? <>{s.meta?.step_label ?? "—"}{s.meta?.ratio != null && <> · {num(s.meta.ratio, 2)}/j</>}</>
+                      : (s.meta?.conf_total ?? 0) > 0 ? `Confirmé · qualité ${num(s.meta?.conf_rate ?? 0, 1)} %` : (s.meta?.sup_prime ?? 0) > 0 ? "Chef d'équipe qualif" : "Salaire fixe"}
+                      {" · "}{CNSS_SHORT[s.meta?.cnss_mode ?? ""] ?? "CNSS"}</div>
+                  </td>
+                  {COLS.map((c) => { const v = c.get(s); return (
+                    <td key={c.key} className={`text-right tabular-nums ${c.band ?? ""} ${c.strong ? "font-semibold" : ""} ${v === 0 ? "text-mut" : ""} ${c.tone ?? ""}`}>{v === 0 ? "—" : num(v, 2)}</td>); })}
+                  <td>
                     <label className={"flex items-center gap-1.5 text-[12.5px]" + (canPayMethod ? " cursor-pointer" : "")} title="Coché = virement bancaire, décoché = espèces">
                       <input type="checkbox" disabled={!canPayMethod || busy} checked={method(s) === "virement"}
                         onChange={(e) => setMethod(s, e.target.checked ? "virement" : "especes")} />
@@ -206,7 +229,13 @@ export default function Paie() {
                   </td>
                   <td className="text-right"><button className="btn btn-sm" onClick={() => setView(s)}>Bulletin</button></td>
                 </tr></Fragment>);
-              })}</tbody>
+              })}
+              <tr className="border-t-2 border-[#0f172a] bg-[#f1f5f9] text-[12.5px]">
+                <td className="sticky left-0 z-[1] bg-[#f1f5f9] font-bold">Total {fGroup === "tous" ? "général" : groupLabel(fGroup)} <span className="mut font-normal">· {ordered.length}</span></td>
+                {COLS.map((c) => <td key={c.key} className={`text-right font-bold tabular-nums ${c.band ?? ""}`}>{c.total === false ? "" : num(ordered.reduce((a, x) => a + c.get(x), 0), 0)}</td>)}
+                <td colSpan={2} />
+              </tr>
+              </tbody>
             </table>
           )) : (<>
             {canEdit && open && <div className="p-3"><button className="btn-pri btn-sm" onClick={() => setAddInput(true)}>+ Ajouter un élément</button></div>}
