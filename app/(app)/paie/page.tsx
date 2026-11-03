@@ -46,6 +46,7 @@ const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; coti
   HS50: { label: "Heures sup. +50 %", kind: "gain", qty: true },
   HS100: { label: "Heures sup. +100 %", kind: "gain", qty: true },
   ABS_NP: { label: "Absence non payée (jours)", kind: "gain", qty: true },
+  JOURS_TRAV: { label: "Jours travaillés (agents)", kind: "info", qty: true },
   PRIME: { label: "Prime & autres (performance)", kind: "gain" },
   AVANCE: { label: "Avance sur salaire", kind: "retenue", cotisable: false, imposable: false },
   RETENUE: { label: "Retenue diverse", kind: "retenue", cotisable: false, imposable: false },
@@ -277,7 +278,7 @@ function InputModal({ period, people, onClose, onDone }: { period: Period; peopl
       <Field label="Type"><select className="inp" value={code} onChange={(e) => { setCode(e.target.value); setLabel(PRESETS[e.target.value].label); }}>
         {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
       <Field label="Libellé sur le bulletin"><input className="inp" value={label} onChange={(e) => setLabel(e.target.value)} /></Field>
-      {p.qty ? <Field label={code === "ABS_NP" ? "Nombre de jours" : "Nombre d'heures"}><input type="number" min={0} step="0.5" className="inp" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
+      {p.qty ? <Field label={code === "ABS_NP" || code === "JOURS_TRAV" ? "Nombre de jours" : "Nombre d'heures"}><input type="number" min={0} step="0.5" className="inp" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
         : <Field label="Montant (DH)"><input type="number" min={0} className="inp" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
       <div className="flex justify-end"><button className="btn-pri" disabled={busy || !who || !(Number(p.qty ? qty : amount) > 0)} onClick={() => run(async () => {
         must(await supabase.from("payroll_inputs").insert({
