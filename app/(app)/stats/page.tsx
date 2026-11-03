@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, must } from "@/lib/supabase";
+import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
-import { Empty, Kpi, PageHead, Tabs } from "@/components/ui";
+import { Empty, Kpi, PageHead, Tabs, useAction } from "@/components/ui";
 import { dh, downloadCSV, dtfr, monthLabel, monthStart, num } from "@/lib/format";
 
 type AM = { agent_code: string; agent_name: string; category: string; rdv: number; challenge: number; rang: number };
@@ -64,6 +65,11 @@ function WeekTable({ title, data, csv }: { title: string; data: ReturnType<typeo
 }
 
 export default function Stats() {
+  const { can } = useSession();
+  const canDelete = can("stats", true);
+  const { busy, run } = useAction();
+  const [reload, setReload] = useState(0);
+  const [selW, setSelW] = useState<string[]>([]);
   const [month, setMonth] = useState(monthStart());
   const [tab, setTab] = useState("classement");
   const [am, setAm] = useState<AM[]>([]);
@@ -81,7 +87,17 @@ export default function Stats() {
     supabase.from("perf_confirmeurs").select("*").eq("month", month).then(({ data }) => setPc((data as PC[]) ?? []));
     supabase.from("perf_societes").select("*").eq("month", month).then(({ data }) => setPs((data as PS[]) ?? []));
     supabase.from("rdv_weeks").select("*").order("week_start", { ascending: false }).limit(60).then(({ data }) => setWeeks((data as W[]) ?? []));
-  }, [month]);
+  }, [month, reload]);
+  // Suppression d'imports : les RDV de ces semaines disparaissent des stats ; recalculer la paie ensuite
+  const deleteWeeks = (ids: string[] | null) => {
+    const label = ids ? `${ids.length} semaine(s) importée(s)` : "TOUS les imports";
+    if (!confirm(`Supprimer ${label} et tous leurs RDV ?\n\nLes stats et challenges concernés disparaissent. Relancez SyncSupabase pour réimporter, puis recalculez la paie.`)) return;
+    if (!ids && prompt("Pour confirmer, tapez SUPPRIMER")?.trim().toUpperCase() !== "SUPPRIMER") return;
+    run(async () => {
+      const n = must(await supabase.rpc("delete_rdv_weeks", { p_weeks: ids }));
+      setSelW([]); setReload((x) => x + 1); return n;
+    }, "Import(s) supprimé(s)");
+  };
 
   const months = Array.from({ length: 8 }, (_, i) => { const d = new Date(); return monthStart(new Date(d.getFullYear(), d.getMonth() - i, 1)); });
   const ranking = am.filter((r) => cat === "tous" || r.category === cat);
@@ -143,9 +159,20 @@ export default function Stats() {
         {tab === "societes" && !byWeek && (perfS.length === 0 ? <Empty>Aucune donnée.</Empty> : (
           <table className="tbl"><thead><tr><th>Société</th><th className="text-right">RDV</th><th className="text-right">OK</th><th className="text-right">Taux</th></tr></thead>
             <tbody>{perfS.map((r) => <tr key={r.key}><td className="font-medium">{r.key}</td><td className="text-right">{r.rdv}</td><td className="text-right">{num(r.ok, 1)}</td><td className="text-right font-semibold">{rate(r.ok, r.rdv)}</td></tr>)}</tbody></table>))}
-        {tab === "imports" && (weeks.length === 0 ? <Empty>Aucune semaine importée. Lancez SyncSupabase depuis la feuille APPT.</Empty> : (
-          <table className="tbl"><thead><tr><th>Onglet APPT</th><th>Début de semaine</th><th className="text-right">Lignes</th><th>Importé le</th></tr></thead>
-            <tbody>{weeks.map((w) => <tr key={w.id}><td className="font-medium">{w.week_label}</td><td>{w.week_start}</td><td className="text-right">{w.row_count}</td><td className="mut">{dtfr(w.imported_at)}</td></tr>)}</tbody></table>))}
+        {tab === "imports" && (weeks.length === 0 ? <Empty>Aucune semaine importée. Lancez SyncSupabase depuis la feuille APPT.</Empty> : (<>
+          {canDelete && <div className="flex flex-wrap gap-2 p-3">
+            <button className="btn-no btn-sm" disabled={busy || !selW.length} onClick={() => deleteWeeks(selW)}>Supprimer la sélection ({selW.length})</button>
+            <button className="btn-no btn-sm ml-auto" disabled={busy} onClick={() => deleteWeeks(null)}>Supprimer tous les imports</button>
+          </div>}
+          <table className="tbl"><thead><tr>
+            {canDelete && <th className="w-8"><input type="checkbox" checked={selW.length > 0 && selW.length === weeks.length} onChange={(e) => setSelW(e.target.checked ? weeks.map((w) => w.id) : [])} /></th>}
+            <th>Onglet APPT</th><th>Début de semaine</th><th className="text-right">Lignes</th><th>Importé le</th>{canDelete && <th />}</tr></thead>
+            <tbody>{weeks.map((w) => <tr key={w.id}>
+              {canDelete && <td><input type="checkbox" checked={selW.includes(w.id)} onChange={(e) => setSelW(e.target.checked ? [...selW, w.id] : selW.filter((x) => x !== w.id))} /></td>}
+              <td className="font-medium">{w.week_label}</td><td>{w.week_start}</td><td className="text-right">{w.row_count}</td><td className="mut">{dtfr(w.imported_at)}</td>
+              {canDelete && <td className="text-right"><button className="btn-no btn-sm" disabled={busy} onClick={() => deleteWeeks([w.id])}>Supprimer</button></td>}
+            </tr>)}</tbody></table>
+        </>))}
       </div>
     </Guard>
   );
