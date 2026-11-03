@@ -87,14 +87,14 @@ function Strip({ children }: { children: React.ReactNode }) {
 /** Bulletin de paie (design A4 « Bulletin — NotionCall »). */
 export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
   const [lines, setLines] = useState<Line[]>([]);
-  const [p, setP] = useState<{ first_name: string; last_name: string; matricule: string | null; job_title: string | null; cin: string | null; hire_date: string | null; role_key: string | null } | null>(null);
+  const [p, setP] = useState<{ first_name: string; last_name: string; matricule: string | null; job_title: string | null; cin: string | null; hire_date: string | null; role_key: string | null; groupe: string | null } | null>(null);
   const [comp, setComp] = useState<{ cnss_number: string | null; rib: string | null } | null>(null);
   const [co, setCo] = useState<{ name: string; city: string | null; cnss_employer_no: string | null } | null>(null);
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from("payslip_lines").select("*").eq("payslip_id", slip.id).order("sort").then(({ data }) => setLines((data as Line[]) ?? []));
-    supabase.from("profiles").select("first_name,last_name,matricule,job_title,cin,hire_date,role_key").eq("id", slip.profile_id).maybeSingle()
+    supabase.from("profiles").select("first_name,last_name,matricule,job_title,cin,hire_date,role_key,groupe").eq("id", slip.profile_id).maybeSingle()
       .then(({ data }) => {
         setP(data);
         if (data?.role_key) supabase.from("app_roles").select("label").eq("key", data.role_key).maybeSingle().then(({ data: r }) => setRole(r?.label ?? null));
@@ -105,8 +105,12 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
 
   const meta: SlipMeta = slip.meta ?? {};
   const isAgent = slip.pay_mode === "rdv";
+  // Contenu du bulletin selon le groupe : agents (production RDV), direction (confirmé / chef d'équipe), back office & entretien (salaire fixe)
+  const isConf = (meta.conf_total ?? 0) > 0 || meta.conf_prime != null && Number(meta.conf_prime) > 0;
   const line = (code: string) => lines.filter((l) => l.code === code);
   const sumGain = (code: string) => line(code).reduce((a, l) => a + Number(l.gain ?? 0), 0);
+  const isSup = line("SUP_AGENT").length + line("SUP_MOIS").length + line("SUP_JOUR").length > 0;
+  const isStaffFixe = !isAgent && !isConf && !isSup;
 
   // Montants : depuis meta (nouveau calcul) ; à défaut, reconstitués depuis les lignes (anciens bulletins)
   const hasMeta = meta.reste_a_prendre != null;
@@ -114,7 +118,10 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
   const assid = hasMeta ? Number(meta.assiduite ?? 0) : sumGain("ASSIDUITE");
   const chal = hasMeta ? Number(meta.challenge ?? 0) : isAgent ? sumGain("CHALLENGE") : 0;
   const gross = Number(slip.gross);
-  const prime = Math.max(0, Math.round((gross - salary - assid - chal) * 100) / 100);
+  const confPrime = Number(meta.conf_prime ?? 0);
+  const supPrime = Number(meta.sup_prime ?? 0);
+  const anc = sumGain("ANC");
+  const prime = Math.max(0, Math.round((gross - salary - assid - chal - confPrime - supPrime - anc + Number(meta.prorata ?? 0)) * 100) / 100);
   const share = Number(slip.cnss_employee) + Number(slip.amo_employee) + Number(slip.ir);
   const chalPaid = hasMeta ? Number(meta.challenge_paid ?? 0) : 0;
   const adv = hasMeta ? Number(meta.advances ?? 0) : 0;
@@ -152,6 +159,7 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
             <span className="text-mut">CIN</span><span className="font-mono">{p?.cin || "—"}</span>
             <span className="text-mut">CNSS</span><span className="font-mono">{comp?.cnss_number || "—"}</span>
             <span className="text-mut">Rôle</span><span>{isAgent ? `Agent · ${role?.replace(/^Agent\s+/i, "") ?? ""}` : role ?? p?.job_title ?? "—"}</span>
+            <span className="text-mut">Groupe</span><span>{({ direction: "Direction", back_office: "Back office", agents: "Agents", extra: "Entretien & logistique" } as Record<string, string>)[p?.groupe ?? ""] ?? "—"}</span>
             <span className="text-mut">Entrée</span><span>{p?.hire_date ? `${dfr(p.hire_date)} · ${seniority} mois` : "—"}</span>
           </div>
         </Card>
@@ -180,14 +188,25 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
             <Stat label="Ratio / jour" value={q(meta.ratio)} hi />
           </Strip>
         </Box>
-      ) : (meta.rdv_ok ?? 0) > 0 ? (
-        <Box title="Production" className="mb-5">
+      ) : isConf ? (
+        <Box title="Confirmation" className="mb-5">
           <Strip>
-            <Stat label="RDV OK pris" value={q(meta.rdv_ok)} />
-            <Stat label="Prime par RDV OK" value="150" />
-            <Stat label="Prime RDV" value={m(sumGain("RDV_OK"))} hi />
-            <Stat label="Jours ouvrables" value={wd ?? "—"} />
+            <Stat label="RDV confirmés (avec verdict)" value={q(meta.conf_total)} />
+            <Stat label="RDV OK" value={q(meta.conf_ok)} />
+            <Stat label="Qualité" value={`${q(meta.conf_rate)} %`} hi />
+            <Stat label="Prime qualité" value={m(confPrime)} />
           </Strip>
+          {(meta.rdv_ok ?? 0) > 0 && <div className="mt-1.5 text-[12px] text-mut">RDV OK pris personnellement : {meta.rdv_ok}{Number(meta.challenge_cash ?? 0) > 0 ? ` · ${m(meta.challenge_cash)} DH versés à part (hors brut)` : ""}</div>}
+        </Box>
+      ) : isSup ? (
+        <Box title="Équipe qualif (chef d'équipe)" className="mb-5">
+          <Strip>
+            <Stat label="Primes par agent" value={m(sumGain("SUP_AGENT"))} />
+            <Stat label={`Prime du mois (${q(meta.sup_team_month)} OK)`} value={m(sumGain("SUP_MOIS"))} />
+            <Stat label={`Challenge jour (${q(meta.sup_days)} j)`} value={m(sumGain("SUP_JOUR"))} />
+            <Stat label="Total primes équipe" value={m(supPrime)} hi />
+          </Strip>
+          {(meta.rdv_ok ?? 0) > 0 && <div className="mt-1.5 text-[12px] text-mut">RDV OK pris personnellement : {meta.rdv_ok}{Number(meta.challenge_cash ?? 0) > 0 ? ` · ${m(meta.challenge_cash)} DH versés à part (hors brut)` : ""}</div>}
         </Box>
       ) : null}
 
@@ -205,11 +224,15 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
       <div className="mb-4 grid gap-4 sm:grid-cols-[1.15fr_1fr]">
         <Box title="Rémunération">
           <Card className="py-1.5">
-            <Row k="Tranche salariale" v={<b>{isAgent ? meta.step_label ?? "—" : "Salaire fixe"}</b>} mono={false} />
-            <Row k="Salaire" v={m(salary)} />
+            <Row k="Tranche salariale" v={<b>{isAgent ? meta.step_label ?? "—" : isConf ? "Confirmé" : isSup ? "Chef d'équipe qualif" : "Salaire fixe"}</b>} mono={false} />
+            <Row k={isStaffFixe || isConf || isSup ? "Salaire de base" : "Salaire"} v={m(salary)} />
             {assid > 0 && <Row k="Prime d'assiduité" v={m(assid)} />}
+            {anc > 0 && <Row k="Prime d'ancienneté" v={m(anc)} />}
             {isAgent && <Row k="Challenge" v={m(chal)} />}
+            {isConf && <Row k={<>Prime qualité <span className="text-mut">({q(meta.conf_rate)} %)</span></>} v={m(confPrime)} />}
+            {isSup && <Row k="Primes équipe qualif" v={m(supPrime)} />}
             {prime > 0 && <Row k={<>Prime &amp; autres <span className="text-mut">{isAgent ? "(performance)" : (meta.rdv_ok ?? 0) > 0 ? "(RDV OK)" : ""}</span></>} v={m(prime)} />}
+            {Number(meta.prorata ?? 0) > 0 && <Row k="Prorata sortie" v={`- ${m(meta.prorata)}`} />}
             <Row k="Salaire brut" v={m(gross)} strong />
           </Card>
         </Box>
@@ -238,7 +261,7 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-[#0f172a] px-5 py-4">
         <div>
           <div className="text-[17px] font-bold">Reste à prendre</div>
-          <div className="text-[12px] text-mut">Brut − challenges versés − part salariale − avances</div>
+          <div className="text-[12px] text-mut">{isAgent ? "Brut − challenges versés − part salariale − avances" : "Brut − part salariale − avances"}</div>
         </div>
         <div className="font-mono text-[30px] font-bold tabular-nums text-[#0f766e]">{m(reste)} <span className="text-[15px] text-[#0f172a]">DH</span></div>
       </div>
@@ -247,8 +270,10 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Box title="Total perçu">
           <Card className="py-1.5">
-            <Row k="Salaire" v={m(salary + assid)} />
+            <Row k="Salaire" v={m(salary + assid + anc)} />
             {isAgent && <Row k="Challenge" v={m(chal)} />}
+            {isConf && <Row k="Prime qualité" v={m(confPrime)} />}
+            {isSup && <Row k="Primes équipe" v={m(supPrime)} />}
             {prime > 0 && <Row k="Prime & autres" v={m(prime)} />}
             {Number(meta.prorata ?? 0) > 0 && <Row k={`Prorata sortie (${meta.days_present} j / ${meta.working_days} j)`} v={"−" + m(meta.prorata)} />}
             <Row k="Total" v={m(gross)} strong />
