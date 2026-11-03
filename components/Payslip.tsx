@@ -128,7 +128,7 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
   const otherDed = Number(slip.deductions) - adv;
   const reste = hasMeta ? Number(meta.reste_a_prendre) : Number(slip.net_pay);
   const especes = hasMeta ? Number(meta.especes ?? 0) : 0;
-  const cnssLine = line("CNSS")[0], amoLine = line("AMO")[0];
+  const cnssLine = line("CNSS")[0];
   const wd = meta.working_days;
   const lastDay = new Date(new Date(month + "T12:00:00").getFullYear(), new Date(month + "T12:00:00").getMonth() + 1, 0);
   const seniority = monthsBetween(p?.hire_date, month);
@@ -236,14 +236,13 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
             <Row k="Salaire brut" v={m(gross)} strong />
           </Card>
         </Box>
-        <Box title="CNSS">
+        <Box title="Cotisations sociales">
           <Card className="py-1.5">
-            <Row k="Statut" v={<b>{CNSS_LABEL[meta.cnss_mode ?? ""] ?? "Déclaré"}</b>} mono={false} />
-            <Row k="Base soumise" v={m(meta.cnss_base ?? cnssLine?.base)} />
-            <Row k={`CNSS ${pct(cnssLine?.rate)}`} v={`- ${m(slip.cnss_employee)}`} />
-            <Row k={`AMO ${pct(amoLine?.rate)}`} v={`- ${m(slip.amo_employee)}`} />
-            {Number(slip.ir) > 0 && <Row k="IR" v={`- ${m(slip.ir)}`} />}
-            <Row k="Part salariale" v={`- ${m(share)}`} strong />
+            <Row k="Statut" v={<b>{CNSS_LABEL[meta.cnss_mode ?? ""] ?? "—"}</b>} mono={false} />
+            <Row k="Salaire déclaré (soumis à cotisation)" v={m(meta.cnss_base ?? cnssLine?.base ?? 0)} />
+            <Row k={<>Part salariale <span className="text-mut">({Number(slip.cnss_employee) > 0 ? pct(cnssLine?.rate) : meta.cnss_mode === "offert" ? "offerte" : "—"})</span></>} v={`- ${m(share)}`} strong />
+            <Row k={<>Part patronale <span className="text-mut">({Number(slip.employer_charges) > 0 ? "16 %" : "—"})</span></>} v={m(slip.employer_charges)} />
+            <Row k="Coût total NotionCall" v={m(slip.employer_cost)} />
           </Card>
         </Box>
       </div>
