@@ -35,6 +35,9 @@ export default function Salaries() {
   const [showOut, setShowOut] = useState(false);
   const [exits, setExits] = useState<Record<string, string>>({});
   const [groups, setGroups] = useState<Record<string, string>>({});
+  // Comptes hors effectif (direction, comptes techniques admin / RH) : pas de fiche salarié ni de paie
+  const [hors, setHors] = useState<Record<string, boolean>>({});
+  const [showHors, setShowHors] = useState(false);
   const [fGroup, setFGroup] = useState("tous");
   const [sel, setSel] = useState<string[]>([]);
   const [edit, setEdit] = useState<string | "new" | null>(null);
@@ -49,9 +52,10 @@ export default function Salaries() {
       supabase.from("app_roles").select("key,label,kind,locked,color").order("label"),
       supabase.from("departments").select("id,name").order("name"),
       supabase.rpc("visible_base_salaries"),
-      supabase.from("profiles").select("id,exit_date,groupe"),
+      supabase.from("profiles").select("id,exit_date,groupe,hors_effectif"),
     ]);
-    const px = (ex as { id: string; exit_date: string | null; groupe: string | null }[] | null) ?? [];
+    const px = (ex as { id: string; exit_date: string | null; groupe: string | null; hors_effectif: boolean }[] | null) ?? [];
+    setHors(Object.fromEntries(px.map((x) => [x.id, !!x.hors_effectif])));
     setExits(Object.fromEntries(px.filter((x) => x.exit_date).map((x) => [x.id, x.exit_date as string])));
     setGroups(Object.fromEntries(px.map((x) => [x.id, x.groupe ?? "agents"])));
     setRows((r as Row[]) ?? []); setRoles((ro as Role[]) ?? []); setDepts((d as Dept[]) ?? []);
@@ -62,12 +66,13 @@ export default function Salaries() {
   useEffect(() => { load(); }, [load]);
 
   const today = new Date().toISOString().slice(0, 10);
-  const isOut = useCallback((r: Row) => r.status === "sorti" || r.status === "inactif" || (!!exits[r.id] && exits[r.id] < today), [exits, today]);
-  const outCount = rows.filter(isOut).length;
+  const isOut = useCallback((r: Row) => hors[r.id] || r.status === "sorti" || r.status === "inactif" || (!!exits[r.id] && exits[r.id] < today), [exits, today, hors]);
+  const horsCount = rows.filter((r) => hors[r.id]).length;
+  const outCount = rows.filter((r) => isOut(r) && !hors[r.id]).length;
   const shown = useMemo(() => rows.filter((r) =>
-    (showOut ? isOut(r) : !isOut(r)) && (fGroup === "tous" || groups[r.id] === fGroup) && (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
+    (showHors ? !!hors[r.id] : showOut ? isOut(r) && !hors[r.id] : !isOut(r)) && (fGroup === "tous" || groups[r.id] === fGroup) && (!q || `${r.first_name} ${r.last_name} ${r.username} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) &&
     (!fRole || r.role_key === fRole) && (fAcc === "tous" || r.account_status === fAcc),
-  ).sort((a, b) => groupRank(groups[a.id]) - groupRank(groups[b.id]) || rank(a) - rank(b)), [rows, q, fRole, fAcc, showOut, isOut, groups, fGroup]);
+  ).sort((a, b) => groupRank(groups[a.id]) - groupRank(groups[b.id]) || rank(a) - rank(b)), [rows, q, fRole, fAcc, showOut, showHors, hors, isOut, groups, fGroup]);
   const groupCount = (g: string) => rows.filter((r) => !isOut(r) && groups[r.id] === g).length;
   const cols = canEdit ? 11 : 10;
   const roleColor = (k: string | null) => roles.find((r) => r.key === k)?.color ?? "#64748b";
@@ -109,7 +114,7 @@ export default function Salaries() {
 
   return (
     <Guard module="salaries">
-      <PageHead title="Salariés" sub={`${rows.length - outCount} fiches actives · ${rows.filter((r) => r.account_status === "actif").length} avec accès · ${outCount} sorti(s)`}>
+      <PageHead title="Salariés" sub={`${rows.length - outCount - horsCount} fiches actives · ${rows.filter((r) => r.account_status === "actif").length} avec accès · ${outCount} sorti(s)`}>
         <button className="btn" onClick={() => downloadCSV("salaries.csv", shown.map(({ id: _id, ...r }) => ({ ...r, salaire_base: salaries[_id] ?? (hidden[_id] ? "masqué" : "") })))}>Export CSV</button>
         {isSuper && <button className="btn" disabled={busy} title="Masquer le salaire de base des fiches affichées aux autres utilisateurs (RH, direction, managers)"
           onClick={() => confirm(`Masquer le salaire de base de ${shown.length} fiche(s) aux autres utilisateurs ?`) && hideSalaries(shown.map((r) => r.id), true)}>🔒 Masquer les salaires</button>}
@@ -125,8 +130,10 @@ export default function Salaries() {
           <option value="">Tous les rôles</option>{roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
         <Tabs value={fAcc} onChange={setFAcc} tabs={[{ key: "tous", label: "Tous" }, { key: "sans_compte", label: "Sans accès" }, { key: "actif", label: "Accès actif" }, { key: "bloque", label: "Bloqués" }]} />
-        <button className={`btn btn-sm ${showOut ? "border-pri text-pri-d" : ""}`} onClick={() => setShowOut(!showOut)}>
+        <button className={`btn btn-sm ${showOut ? "border-pri text-pri-d" : ""}`} onClick={() => { setShowOut(!showOut); setShowHors(false); }}>
           {showOut ? "← Retour aux actifs" : `Historique des sortis (${outCount})`}</button>
+        {(isSuper || canEdit) && horsCount > 0 && <button className={`btn btn-sm ${showHors ? "border-pri text-pri-d" : ""}`} title="Direction et comptes techniques : accès au site sans fiche salarié ni paie"
+          onClick={() => { setShowHors(!showHors); setShowOut(false); }}>{showHors ? "← Retour aux salariés" : `Comptes hors effectif (${horsCount})`}</button>}
         {canEdit && (
           <div className="flex flex-wrap gap-2 sm:ml-auto">
             {sel.length > 0 && <button className="btn-pri" disabled={busy} onClick={() => createAccess(sel)}>Créer l&apos;accès ({sel.length})</button>}
@@ -187,7 +194,7 @@ export default function Salaries() {
 
 const EMPTY = {
   matricule: "", username: "", first_name: "", last_name: "", role_key: "brute", department_id: "", manager_id: "", job_title: "", hire_date: "",
-  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", groupe: "", cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", groupe: "", hors_effectif: false as boolean, cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
 };
 const COMP = {
   base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
@@ -196,8 +203,7 @@ const COMP = {
 };
 const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid";
 const CNSS_MODES: [string, string][] = [
-  ["plafonne", "Plafonné (base CNSS fixe)"], ["declare", "Déclaré (salaire réel)"], ["offert", "Offert (payé par l'employeur)"],
-  ["tahfiz", "Tahfiz (exonéré)"], ["non_declare", "Non déclaré"],
+  ["non_declare", "Non déclaré"], ["tahfiz", "Tahfiz (exonéré)"], ["plafonne", "Plafonné (base CNSS fixe)"], ["offert", "Offert (payé par l'employeur)"],
 ];
 
 function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id: string | null; salary: string | null; roles: Role[]; depts: Dept[]; people: Row[]; onClose: () => void; onDone: () => void }) {
@@ -207,11 +213,12 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
   const { busy, run } = useAction();
   useEffect(() => {
     if (!id) return;
-    supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : "")])) as typeof EMPTY));
+    supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : k === "hors_effectif" ? false : "")])) as typeof EMPTY));
     // base_salary n'est pas lisible directement (salaire masquable) : affiché via `salary`
     supabase.from("employee_compensation").select(COMP_COLS).eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, (data as Record<string, unknown>)[k] ?? (k in COMP && typeof COMP[k as keyof typeof COMP] === "boolean" ? COMP[k as keyof typeof COMP] : "")])) as typeof COMP));
   }, [id]);
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setF({ ...f, [k]: e.target instanceof HTMLInputElement && e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const setc = (k: keyof typeof COMP) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setC({ ...c, [k]: e.target instanceof HTMLInputElement && e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const nn = (v: unknown) => (v === "" ? null : v);
@@ -259,6 +266,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
           <option value="">—</option>{people.filter((p) => p.id !== id && p.status === "actif").map((p) => <option key={p.id} value={p.id}>{fullName(p)}</option>)}</select></Field>
         <Field label="Poste"><input className="inp" value={f.job_title} placeholder="intitulé réel du poste" onChange={set("job_title")} /></Field>
         <Field label="Statut"><select className="inp" value={f.status} onChange={set("status")}><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="sorti">Sorti</option></select></Field>
+        {isSuper && <label className="mb-3 flex items-center gap-2 self-end text-[13px]" title="Compte d'accès uniquement (direction, admin, RH) : retiré de la liste des salariés et de la paie">
+          <input type="checkbox" checked={!!f.hors_effectif} onChange={set("hors_effectif")} /> Hors effectif (pas de fiche salarié ni de paie)</label>}
       </div>
       <h3 className="mb-2 mt-2">Contrat</h3>
       <div className="grid gap-x-3 sm:grid-cols-4">
@@ -280,6 +289,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Adresse" className="sm:col-span-2"><input className="inp" value={f.address} onChange={set("address")} /></Field>
         <Field label="Contact d'urgence"><input className="inp" value={f.emergency_contact} onChange={set("emergency_contact")} /></Field>
       </div>
+      {id && <AgentCodes profileId={id} />}
       <h3 className="mb-2 mt-2">Rémunération</h3>
       <div className="grid gap-x-3 sm:grid-cols-3">
         {id ? <Field label="Salaire de base (via « Salaire »)"><input className="inp" disabled value={salary ?? "—"} /></Field>
@@ -293,7 +303,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       <h3 className="mb-2 mt-2">CNSS & paiement</h3>
       <div className="grid gap-x-3 sm:grid-cols-3">
         <Field label="Mode CNSS"><select className="inp" value={c.cnss_mode} onChange={setc("cnss_mode")}>
-          {CNSS_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          {CNSS_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          {c.cnss_mode === "declare" && <option value="declare">Déclaré (salaire réel)</option>}</select></Field>
         {["plafonne", "offert"].includes(c.cnss_mode)
           ? <Field label="Base CNSS déclarée (DH)"><input type="number" className="inp" value={c.cnss_base} onChange={setc("cnss_base")} /></Field>
           : <div />}
@@ -317,6 +328,59 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       </div>
     </Modal>
   );
+}
+
+/** Tags stats : codes agent (planning / APPT) rattachés au salarié, avec leur catégorie (brute, qualif, sous-traitant). */
+function AgentCodes({ profileId }: { profileId: string }) {
+  type Ag = { code: string; display_name: string; profile_id: string | null };
+  const [all, setAll] = useState<Ag[]>([]);
+  const [cfg, setCfg] = useState<{ qualif: string[]; sous_traitants: string[] }>({ qualif: [], sous_traitants: [] });
+  const [code, setCode] = useState("");
+  const [cat, setCat] = useState("brute");
+  const { busy, run } = useAction();
+  const load = useCallback(async () => {
+    const [{ data: a }, { data: c }] = await Promise.all([
+      supabase.from("rdv_agents").select("code,display_name,profile_id").order("code"),
+      supabase.from("rdv_config").select("qualif,sous_traitants").maybeSingle(),
+    ]);
+    setAll((a as Ag[]) ?? []);
+    if (c) setCfg(c as { qualif: string[]; sous_traitants: string[] });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const mine = all.filter((a) => a.profile_id === profileId);
+  const free = all.filter((a) => !a.profile_id);
+  const catOf = (k: string) => (cfg.qualif.includes(k) ? "qualif" : cfg.sous_traitants.includes(k) ? "soustraitant" : "brute");
+  const LABEL: Record<string, string> = { brute: "Brute", qualif: "Qualif", soustraitant: "Sous-traitant" };
+  const TONE: Record<string, string> = { brute: "bg-pri-l text-pri-d", qualif: "bg-[#ede9fe] text-[#6d28d9]", soustraitant: "bg-warn-l text-warn" };
+  const save = (k: string, category: string, link: boolean) => run(async () => {
+    must(await supabase.rpc("set_agent_code", { p_profile: profileId, p_code: k, p_category: category, p_link: link }));
+    setCode(""); await load();
+  }, link ? `Code « ${k} » enregistré` : `Code « ${k} » détaché`);
+  return (<>
+    <h3 className="mb-1 mt-2">Tags stats (codes agent)</h3>
+    <p className="mut mb-2 text-[12.5px]">Codes utilisés dans le planning et les stats RDV pour ce salarié. Qualif : 1 RDV compte pour 1/2 en paie.</p>
+    <div className="mb-2 flex flex-wrap gap-2">
+      {mine.length === 0 && <span className="mut text-[13px]">Aucun code rattaché.</span>}
+      {mine.map((a) => {
+        const k = catOf(a.code);
+        return (
+          <span key={a.code} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-medium ${TONE[k]}`}>
+            <b className="font-mono">{a.code}</b>
+            <select className="rounded bg-transparent text-[12px]" value={k} disabled={busy} onChange={(e) => save(a.code, e.target.value, true)} title="Changer la catégorie">
+              {Object.entries(LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <button className="opacity-60 hover:opacity-100" disabled={busy} title="Détacher ce code"
+              onClick={() => confirm(`Détacher le code « ${a.code} » de ce salarié ?`) && save(a.code, k, false)}>✕</button>
+          </span>);
+      })}
+    </div>
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <input className="inp w-40" list="free-codes" placeholder="code (ex. hd)" value={code} onChange={(e) => setCode(e.target.value.toLowerCase())} />
+      <datalist id="free-codes">{free.map((a) => <option key={a.code} value={a.code}>{a.display_name}</option>)}</datalist>
+      <select className="inp w-auto" value={cat} onChange={(e) => setCat(e.target.value)}>
+        {Object.entries(LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+      <button className="btn btn-sm" disabled={busy || !code.trim()} onClick={() => save(code.trim(), cat, true)}>+ Ajouter le tag</button>
+    </div>
+  </>);
 }
 
 function CredsModal({ creds, onClose }: { creds: Cred[]; onClose: () => void }) {
