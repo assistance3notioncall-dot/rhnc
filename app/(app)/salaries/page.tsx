@@ -202,6 +202,8 @@ const COMP = {
   pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true, rdv_prime_paid: false,
 };
 const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid";
+// Responsables possibles d'un agent : Monim (abdel) et Kawtar
+const SUP_USERNAMES = ["abdel", "kawtar"];
 const CNSS_MODES: [string, string][] = [
   ["non_declare", "Non déclaré"], ["tahfiz", "Tahfiz (exonéré)"], ["plafonne", "Plafonné (base CNSS fixe)"], ["offert", "Offert (payé par l'employeur)"],
 ];
@@ -222,6 +224,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
   const setc = (k: keyof typeof COMP) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setC({ ...c, [k]: e.target instanceof HTMLInputElement && e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const nn = (v: unknown) => (v === "" ? null : v);
+  const isAgentFiche = f.groupe === "agents" || (!f.groupe && (["brute", "qualif"].includes(f.role_key) || f.role_key.startsWith("soustrait")));
   const sensitive = (k: string) => { const r = roles.find((x) => x.key === k); return !!r && (r.locked || r.kind === "rh" || r.kind === "admin"); };
 
   async function save() {
@@ -263,7 +266,10 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Section"><select className="inp" value={f.department_id} onChange={set("department_id")}>
           <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
         <Field label="Responsable"><select className="inp" value={f.manager_id} onChange={set("manager_id")}>
-          <option value="">—</option>{people.filter((p) => p.id !== id && p.status === "actif").map((p) => <option key={p.id} value={p.id}>{fullName(p)}</option>)}</select></Field>
+          <option value="">—</option>{people.filter((p) => p.id !== id && p.status === "actif"
+            // Agents : responsable = Monim (sup) ou Kawtar (chef d'équipe, primes d'équipe sur ses agents)
+            && (!isAgentFiche || SUP_USERNAMES.includes(p.username ?? "") || p.id === f.manager_id))
+            .map((p) => <option key={p.id} value={p.id}>{fullName(p)}{isAgentFiche && p.username === "abdel" ? " (Monim)" : ""}</option>)}</select></Field>
         <Field label="Poste"><input className="inp" value={f.job_title} placeholder="intitulé réel du poste" onChange={set("job_title")} /></Field>
         <Field label="Statut"><select className="inp" value={f.status} onChange={set("status")}><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="sorti">Sorti</option></select></Field>
         {isSuper && <label className="mb-3 flex items-center gap-2 self-end text-[13px]" title="Compte d'accès uniquement (direction, admin, RH) : retiré de la liste des salariés et de la paie">
