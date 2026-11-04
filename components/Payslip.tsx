@@ -288,6 +288,22 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
           </Card>
         </Box>
       </div>
+
+      {/* Signatures */}
+      <div className="mt-6 grid grid-cols-2 gap-4" style={{ breakInside: "avoid" }}>
+        <div className="rounded-lg border border-[#0f172a]/40 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-mut">Signature et cachet de l&apos;employeur</div>
+          <div className="text-[12px] text-mut">{co?.name ?? "NotionCall"}</div>
+          <div style={{ height: 90 }} />
+          <div className="border-t border-dashed border-[#0f172a]/40 pt-1 text-[11px] text-mut">Date : ____ / ____ / ________</div>
+        </div>
+        <div className="rounded-lg border border-[#0f172a]/40 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-mut">Signature du salarié</div>
+          <div className="text-[12px] text-mut">{fullName(p)} · « Lu et approuvé »</div>
+          <div style={{ height: 90 }} />
+          <div className="border-t border-dashed border-[#0f172a]/40 pt-1 text-[11px] text-mut">Date : ____ / ____ / ________</div>
+        </div>
+      </div>
     </div>
   );
 }
