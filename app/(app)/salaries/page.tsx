@@ -261,10 +261,8 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Identifiant de connexion *"><input className="inp" value={f.username} disabled={!!id && !isSuper} placeholder="ex. ayoub" onChange={set("username")} /></Field>
         <Field label="Rôle"><select className="inp" value={f.role_key} disabled={!!id && !isSuper} onChange={set("role_key")}>
           {roles.filter((r) => isSuper || !sensitive(r.key)).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}</select></Field>
-        <Field label="Groupe"><select className="inp" value={f.groupe} onChange={set("groupe")}>
+        <Field label="Section (groupe)"><select className="inp" value={f.groupe} onChange={set("groupe")}>
           <option value="">Auto (selon le rôle)</option>{GROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-        <Field label="Section"><select className="inp" value={f.department_id} onChange={set("department_id")}>
-          <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
         <Field label="Responsable"><select className="inp" value={f.manager_id} onChange={set("manager_id")}>
           <option value="">—</option>{people.filter((p) => p.id !== id && p.status === "actif"
             // Agents : responsable = Monim (sup) ou Kawtar (chef d'équipe, primes d'équipe sur ses agents)

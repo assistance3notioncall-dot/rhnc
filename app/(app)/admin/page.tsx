@@ -165,6 +165,8 @@ export default function Admin() {
         children_count: Number(f.children_count) || 0,
         job_title: f.job_title.trim() || null,
         account_status: "sans_compte",
+        // Section = groupe (Direction, Back office, Agents, Entretien & logistique)
+        groupe: ({ "Direction": "direction", "Back office": "back_office", "Agents": "agents", "Entretien & logistique": "extra" } as Record<string, string>)[depts.find((d) => d.id === f.department_id)?.name ?? ""] ?? null,
       }).select("id").single()) as { id: string };
 
       must(await supabase.from("employee_compensation").upsert({
@@ -448,9 +450,9 @@ function AjouterSalarie(
             {choisissables.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
           </select>
         </Field>
-        <Field label="Section">
+        <Field label="Section (groupe)">
           <select className="inp" value={f.department_id} onChange={set("department_id")}>
-            <option value="">—</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            <option value="">Auto (selon le rôle)</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </Field>
         <Field label="Responsable">
