@@ -199,9 +199,9 @@ const EMPTY = {
 const COMP = {
   base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
   cnss_mode: "plafonne", cnss_base: 6000 as number | string, ir_applies: false, in_payroll: true, pay_method: "",
-  pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true, rdv_prime_paid: false,
+  pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true, rdv_prime_paid: false, cnss_employee_fixed: "" as number | string,
 };
-const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid";
+const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid,cnss_employee_fixed";
 // Responsables possibles selon le groupe : agents → Monim (abdel) ou Kawtar ; back office / entretien → Amal ; direction → Monim ou Amal
 const RESP_BY_GROUP: Record<string, string[]> = { agents: ["abdel", "kawtar"], back_office: ["amal"], extra: ["amal"], direction: ["abdel", "amal"] };
 const CNSS_MODES: [string, string][] = [
@@ -240,7 +240,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       if (!f.exit_date && f.status === "sorti") throw new Error("Indiquez la date de sortie.");
       const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib),
         cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method),
-        pay_plan: nn(c.pay_plan), rdv_prime: !!c.rdv_prime, rdv_prime_paid: !!c.rdv_prime_paid, cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
+        pay_plan: nn(c.pay_plan), rdv_prime: !!c.rdv_prime, rdv_prime_paid: !!c.rdv_prime_paid, cnss_employee_fixed: c.cnss_employee_fixed === "" || c.cnss_employee_fixed == null ? null : Number(c.cnss_employee_fixed), cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
       if (id) {
         if (!row.email) delete row.email; // ne jamais vider l'e-mail de connexion
         must(await supabase.from("profiles").update(row).eq("id", id));
@@ -314,6 +314,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         {["plafonne", "offert"].includes(c.cnss_mode)
           ? <Field label="Base CNSS déclarée (DH)"><input type="number" className="inp" value={c.cnss_base} onChange={setc("cnss_base")} /></Field>
           : <div />}
+        {["plafonne", "declare"].includes(c.cnss_mode) && <Field label="Part salariale fixe (DH, vide = 6,4 %)"><input type="number" className="inp" value={c.cnss_employee_fixed ?? ""} onChange={setc("cnss_employee_fixed")} /></Field>}
         <Field label="Reste à prendre payé par"><select className="inp" value={c.pay_method} onChange={setc("pay_method")}>
           <option value="">Auto (virement si RIB valide, sinon espèces)</option><option value="virement">Virement</option><option value="especes">Espèces</option></select></Field>
         <Field label="Plan de rémunération"><select className="inp" value={c.pay_plan} onChange={setc("pay_plan")}>
