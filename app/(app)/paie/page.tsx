@@ -86,6 +86,22 @@ export default function Paie() {
   }, [cur]);
   useEffect(() => { loadPeriods(); supabase.from("profiles").select("id,first_name,last_name,matricule,groupe").order("first_name").then(({ data }) => setPeople((data as Person[]) ?? [])); }, [loadPeriods]);
   useEffect(() => { loadPeriod(); }, [loadPeriod]);
+  // Temps réel : chaque recalcul automatique en base (RDV, salaire, avance, absence…) met à jour payroll_periods.computed_at
+  useEffect(() => {
+    if (!cur) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => { clearTimeout(t); t = setTimeout(() => { loadPeriod(); }, 400); };
+    const ch = supabase.channel(`paie-${cur.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "payroll_periods", filter: `id=eq.${cur.id}` }, refresh)
+      .subscribe();
+    const onFocus = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    const poll = setInterval(onFocus, 30000);
+    return () => { clearTimeout(t); clearInterval(poll); supabase.removeChannel(ch); document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("focus", onFocus); };
+  }, [cur, loadPeriod]);
+  // Le bulletin ouvert suit le dernier calcul (un recalcul crée un nouveau bulletin pour le même salarié)
+  const liveView = view ? slips.find((x) => x.profile_id === view.profile_id) ?? view : null;
   useEffect(() => { setDays(cur?.working_days != null ? String(cur.working_days) : ""); }, [cur]);
 
   const name = (id: string) => fullName(people.find((p) => p.id === id));
@@ -254,7 +270,7 @@ export default function Paie() {
       </>)}
       {view && cur && (
         <Modal title={`Bulletin — ${name(view.profile_id)}`} onClose={() => setView(null)} wide>
-          <div id="slip"><PayslipView slip={view} month={cur.month} /></div>
+          <div id="slip"><PayslipView slip={liveView ?? view} month={cur.month} /></div>
           <div className="mt-3 flex justify-end"><button className="btn-pri" onClick={() => printHtml("Bulletin", document.getElementById("slip")?.innerHTML ?? "")}>Imprimer / PDF</button></div>
         </Modal>
       )}
