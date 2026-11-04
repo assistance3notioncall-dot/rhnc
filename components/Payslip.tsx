@@ -191,8 +191,8 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
       ) : isConf ? (
         <Box title="Confirmation" className="mb-5">
           <Strip>
-            <Stat label="RDV confirmés (avec verdict)" value={q(meta.conf_total)} />
-            <Stat label="RDV OK" value={q(meta.conf_ok)} />
+            <Stat label="RDV confirmés" value={q(meta.conf_total)} />
+            <Stat label="OK pondérés (OK, F.R = 1 · N.T = 0,5)" value={q(meta.conf_ok)} />
             <Stat label="Qualité" value={`${q(meta.conf_rate)} %`} hi />
             <Stat label="Prime qualité" value={m(confPrime)} />
           </Strip>
