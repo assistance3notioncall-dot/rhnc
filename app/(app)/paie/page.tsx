@@ -41,13 +41,15 @@ const COLS: Col[] = [
 const CNSS_SHORT: Record<string, string> = { plafonne: "CNSS plafonnée", declare: "CNSS déclarée", offert: "CNSS offerte", tahfiz: "Tahfiz", non_declare: "Non déclaré" };
 type Input = { id: number; profile_id: string; code: string; label: string; kind: string; quantity: number | null; amount: number | null; cotisable: boolean; imposable: boolean };
 
-const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; cotisable?: boolean; imposable?: boolean }> = {
+const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; flag?: boolean; cotisable?: boolean; imposable?: boolean }> = {
   HS25: { label: "Heures sup. +25 %", kind: "gain", qty: true },
   HS50: { label: "Heures sup. +50 %", kind: "gain", qty: true },
   HS100: { label: "Heures sup. +100 %", kind: "gain", qty: true },
   ABS_NP: { label: "Absence non payée (jours)", kind: "gain", qty: true },
   JOURS_TRAV: { label: "Jours travaillés (agents)", kind: "info", qty: true },
   PRIME_QUALITE: { label: "Prime qualité (montant fixé, confirmés)", kind: "info" },
+  SANS_DEPASSEMENT: { label: "Pas de prime de dépassement ce mois-ci (agents)", kind: "info", flag: true },
+  PRIME_BIENVENUE: { label: "Prime de bienvenue", kind: "gain" },
   PRIME: { label: "Prime & autres (performance)", kind: "gain" },
   AVANCE: { label: "Avance sur salaire", kind: "retenue", cotisable: false, imposable: false },
   RETENUE: { label: "Retenue diverse", kind: "retenue", cotisable: false, imposable: false },
@@ -299,11 +301,11 @@ function InputModal({ period, people, onClose, onDone }: { period: Period; peopl
       <Field label="Type"><select className="inp" value={code} onChange={(e) => { setCode(e.target.value); setLabel(PRESETS[e.target.value].label); }}>
         {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
       <Field label="Libellé sur le bulletin"><input className="inp" value={label} onChange={(e) => setLabel(e.target.value)} /></Field>
-      {p.qty ? <Field label={code === "ABS_NP" || code === "JOURS_TRAV" ? "Nombre de jours" : "Nombre d'heures"}><input type="number" min={0} step="0.5" className="inp" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
+      {p.flag ? null : p.qty ? <Field label={code === "ABS_NP" || code === "JOURS_TRAV" ? "Nombre de jours" : "Nombre d'heures"}><input type="number" min={0} step="0.5" className="inp" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
         : <Field label="Montant (DH)"><input type="number" min={0} className="inp" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
-      <div className="flex justify-end"><button className="btn-pri" disabled={busy || !who || !(Number(p.qty ? qty : amount) > 0)} onClick={() => run(async () => {
+      <div className="flex justify-end"><button className="btn-pri" disabled={busy || !who || !(p.flag || Number(p.qty ? qty : amount) > 0)} onClick={() => run(async () => {
         must(await supabase.from("payroll_inputs").insert({
-          period_id: period.id, profile_id: who, code, label, kind: p.kind, quantity: p.qty ? Number(qty) : null, amount: p.qty ? null : Number(amount),
+          period_id: period.id, profile_id: who, code, label, kind: p.kind, quantity: p.qty ? Number(qty) : null, amount: p.qty || p.flag ? null : Number(amount),
           cotisable: p.cotisable ?? true, imposable: p.imposable ?? true, created_by: me!.id,
         }));
         onDone();
