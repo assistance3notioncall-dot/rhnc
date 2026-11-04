@@ -456,7 +456,10 @@ function AjouterSalarie(
         <Field label="Responsable">
           <select className="inp" value={f.manager_id} onChange={set("manager_id")}>
             <option value="">—</option>
-            {gens.filter((g) => g.status === "actif").map((g) => <option key={g.id} value={g.id}>{fullName(g)}</option>)}
+            {gens.filter((g) => g.status === "actif"
+              // Agents (brute / qualif / sous-traitant) : responsable = Monim ou Kawtar
+              && (!(["brute", "qualif"].includes(f.role_key) || f.role_key.startsWith("soustrait")) || ["abdel", "kawtar"].includes(g.username ?? "") || g.id === f.manager_id))
+              .map((g) => <option key={g.id} value={g.id}>{fullName(g)}{g.username === "abdel" ? " (Monim)" : ""}</option>)}
           </select>
         </Field>
         <Field label="Poste"><input className="inp" value={f.job_title} onChange={set("job_title")} placeholder="intitulé réel du poste (facultatif)" /></Field>
