@@ -50,6 +50,7 @@ const PRESETS: Record<string, { label: string; kind: string; qty?: boolean; flag
   PRIME_QUALITE: { label: "Prime qualité (montant fixé, confirmés)", kind: "info" },
   SANS_DEPASSEMENT: { label: "Pas de prime de dépassement ce mois-ci (agents)", kind: "info", flag: true },
   PRIME_BIENVENUE: { label: "Prime de bienvenue", kind: "gain" },
+  SALAIRE_FIXE: { label: "Salaire fixé pour le mois (agents)", kind: "info" },
   PRIME: { label: "Prime & autres (performance)", kind: "gain" },
   AVANCE: { label: "Avance sur salaire", kind: "retenue", cotisable: false, imposable: false },
   RETENUE: { label: "Retenue diverse", kind: "retenue", cotisable: false, imposable: false },
