@@ -85,7 +85,7 @@ function Strip({ children }: { children: React.ReactNode }) {
 }
 
 /** Bulletin de paie (design A4 « Bulletin — NotionCall »). */
-export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
+export function PayslipView({ slip, month, onReady }: { slip: Slip; month: string; onReady?: () => void }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [p, setP] = useState<{ first_name: string; last_name: string; matricule: string | null; job_title: string | null; cin: string | null; hire_date: string | null; role_key: string | null; groupe: string | null } | null>(null);
   const [comp, setComp] = useState<{ cnss_number: string | null; rib: string | null } | null>(null);
@@ -93,14 +93,20 @@ export function PayslipView({ slip, month }: { slip: Slip; month: string }) {
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("payslip_lines").select("*").eq("payslip_id", slip.id).order("sort").then(({ data }) => setLines((data as Line[]) ?? []));
-    supabase.from("profiles").select("first_name,last_name,matricule,job_title,cin,hire_date,role_key,groupe").eq("id", slip.profile_id).maybeSingle()
-      .then(({ data }) => {
-        setP(data);
-        if (data?.role_key) supabase.from("app_roles").select("label").eq("key", data.role_key).maybeSingle().then(({ data: r }) => setRole(r?.label ?? null));
-      });
-    supabase.from("employee_compensation").select("cnss_number,rib").eq("profile_id", slip.profile_id).maybeSingle().then(({ data }) => setComp(data));
-    supabase.from("companies").select("name,city,cnss_employer_no").limit(1).maybeSingle().then(({ data }) => setCo(data));
+    let alive = true;
+    Promise.all([
+      supabase.from("payslip_lines").select("*").eq("payslip_id", slip.id).order("sort").then(({ data }) => { if (alive) setLines((data as Line[]) ?? []); }),
+      supabase.from("profiles").select("first_name,last_name,matricule,job_title,cin,hire_date,role_key,groupe").eq("id", slip.profile_id).maybeSingle()
+        .then(async ({ data }) => {
+          if (!alive) return;
+          setP(data);
+          if (data?.role_key) { const { data: r } = await supabase.from("app_roles").select("label").eq("key", data.role_key).maybeSingle(); if (alive) setRole(r?.label ?? null); }
+        }),
+      supabase.from("employee_compensation").select("cnss_number,rib").eq("profile_id", slip.profile_id).maybeSingle().then(({ data }) => { if (alive) setComp(data); }),
+      supabase.from("companies").select("name,city,cnss_employer_no").limit(1).maybeSingle().then(({ data }) => { if (alive) setCo(data); }),
+    ]).then(() => { if (alive) onReady?.(); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slip]);
 
   const meta: SlipMeta = slip.meta ?? {};

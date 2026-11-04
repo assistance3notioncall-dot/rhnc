@@ -68,6 +68,7 @@ export default function Paie() {
   const [newDays, setNewDays] = useState("");
   const [days, setDays] = useState("");
   const [fGroup, setFGroup] = useState("tous");
+  const [printAll, setPrintAll] = useState(false);
   const { busy, run } = useAction();
 
   const loadPeriods = useCallback(async () => {
@@ -193,6 +194,8 @@ export default function Paie() {
               ...Object.fromEntries(COLS.map((c) => [c.label, c.get(s).toFixed(2)])), paiement: method(s),
 })))}>Journal de paie (CSV)</button>
             {canEdit && ["validee", "cloturee"].includes(cur.status) && <button className="btn" disabled={busy || !slips.length} onClick={massTransfer}>Virement de masse</button>}
+            <button className="btn" disabled={!ordered.length} title="Tous les bulletins affichés (groupe sélectionné) dans un seul PDF, un bulletin par page"
+              onClick={() => setPrintAll(true)}>Télécharger tous les bulletins ({ordered.length})</button>
           </div>
         </div>
         <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,6 +277,7 @@ export default function Paie() {
           <div className="mt-3 flex justify-end"><button className="btn-pri" onClick={() => printHtml("Bulletin", document.getElementById("slip")?.innerHTML ?? "")}>Imprimer / PDF</button></div>
         </Modal>
       )}
+      {printAll && cur && <AllSlips slips={ordered} month={cur.month} title={`Bulletins ${monthLabel(cur.month)}${fGroup === "tous" ? "" : " — " + groupLabel(fGroup)}`} onClose={() => setPrintAll(false)} />}
       {addInput && cur && <InputModal period={cur} people={people} onClose={() => setAddInput(false)} onDone={() => { setAddInput(false); loadPeriod(); }} />}
     </Guard>
   );
@@ -304,6 +308,35 @@ function InputModal({ period, people, onClose, onDone }: { period: Period; peopl
         }));
         onDone();
       }, "Élément ajouté — recalculez la paie")}>Ajouter</button></div>
+    </Modal>
+  );
+}
+
+/** Tous les bulletins dans un seul document (un par page) : chargement puis impression / PDF automatique. */
+function AllSlips({ slips: initial, month, title, onClose }: { slips: Slip[]; month: string; title: string; onClose: () => void }) {
+  // liste figée à l'ouverture (un recalcul en temps réel ne relance pas l'impression)
+  const [slips] = useState(initial);
+  const [ready, setReady] = useState(0);
+  const done = ready >= slips.length;
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => {
+      const parts = slips.map((s) => document.getElementById(`slip-all-${s.id}`)?.innerHTML ?? "");
+      printHtml(title, parts.map((h, i) => `<div style="${i < parts.length - 1 ? "page-break-after:always;break-after:page;" : ""}">${h}</div>`).join(""));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [done, slips, title]);
+  return (
+    <Modal title="Télécharger tous les bulletins" onClose={onClose}>
+      <p className="mb-2">{done ? "Bulletins prêts : la fenêtre d'impression s'ouvre. Choisissez « Enregistrer en PDF »." : `Préparation des bulletins… ${ready} / ${slips.length}`}</p>
+      <div className="h-2 overflow-hidden rounded bg-gray2-l"><div className="h-full bg-pri transition-all" style={{ width: `${(ready / Math.max(slips.length, 1)) * 100}%` }} /></div>
+      {done && <div className="mt-3 flex justify-end"><button className="btn-pri" onClick={() => {
+        const parts = slips.map((s) => document.getElementById(`slip-all-${s.id}`)?.innerHTML ?? "");
+        printHtml(title, parts.map((h, i) => `<div style="${i < parts.length - 1 ? "page-break-after:always;break-after:page;" : ""}">${h}</div>`).join(""));
+      }}>Rouvrir l&apos;impression / PDF</button></div>}
+      <div aria-hidden className="pointer-events-none fixed left-[-10000px] top-0 w-[820px]">
+        {slips.map((s) => <div key={s.id} id={`slip-all-${s.id}`}><PayslipView slip={s} month={month} onReady={() => setReady((n) => n + 1)} /></div>)}
+      </div>
     </Modal>
   );
 }
