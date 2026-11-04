@@ -12,7 +12,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        {/* Thème avant le premier affichage (pas de flash blanc) : choix mémorisé, sinon réglage du système */}
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("rh360.theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}` }} />
+      </head>
       <body>
         <SessionProvider>
           <ToastProvider>{children}</ToastProvider>

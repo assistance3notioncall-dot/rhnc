@@ -124,3 +124,58 @@
   aside, header, .no-print { display: none !important; }
   main { padding: 0 !important; }
 }
+
+/* =====================================================================
+   Mode sombre : classe « dark » sur <html> (bouton 🌙 / ☀️ de l'en-tête,
+   choix mémorisé ; par défaut, le réglage du système).
+   Les impressions / PDF (bulletins) restent en clair.
+   ===================================================================== */
+html.dark {
+  color-scheme: dark;
+  --color-bg: #0b1220;
+  --color-line: #253247;
+  --color-mut: #94a3b8;
+  --color-fg: #e2e8f0;
+  --color-pri: #3b82f6;
+  --color-pri-d: #93c5fd;
+  --color-pri-l: #172554;
+  --color-ok: #22c55e;
+  --color-ok-l: #052e16;
+  --color-warn: #f59e0b;
+  --color-warn-l: #3b2306;
+  --color-err: #f87171;
+  --color-err-l: #3f0d0d;
+  --color-gray2: #cbd5e1;
+  --color-gray2-l: #1a2537;
+  --color-vio: #a78bfa;
+  --color-vio-l: #2e1065;
+  --color-teal2: #5eead4;
+  --color-teal2-l: #042f2e;
+  --surface: #111a2b;
+  --surface-2: #162033;
+}
+html.dark .bg-white, html.dark .card, html.dark .inp, html.dark .btn, html.dark .chip { background-color: var(--surface); }
+html.dark .btn-pri { background-color: var(--color-pri); color: #fff; }
+html.dark .btn-pri:hover { background-color: #2563eb; }
+html.dark .btn-ok { background-color: #15803d; color: #fff; }
+html.dark .btn-no { border-color: #7f1d1d; }
+html.dark .btn:hover:not(:disabled), html.dark .chip:hover { background-color: var(--surface-2); }
+html.dark .chip-on { background-color: var(--color-pri-l); }
+html.dark .tbl th, html.dark .tbl tr:hover td,
+html.dark .bg-\[\#fafbfd\], html.dark .bg-\[\#f8fafc\], html.dark .bg-\[\#f1f5f9\] { background-color: var(--surface-2); }
+html.dark .bg-\[\#f0f9ff\] { background-color: #0c1d33; }
+html.dark .bg-\[\#f0fdf4\] { background-color: #06261a; }
+html.dark .bg-\[\#ede9fe\] { background-color: #2e1065; }
+html.dark .bg-\[\#cbd5e1\] { background-color: #334155; }
+html.dark .bg-amber-100 { background-color: #3b2306; }
+html.dark .text-amber-800, html.dark .text-\[\#b45309\] { color: #fbbf24; }
+html.dark .text-\[\#0f172a\] { color: var(--color-fg); }
+html.dark .text-\[\#0f766e\] { color: #5eead4; }
+html.dark .text-\[\#6d28d9\] { color: #c4b5fd; }
+html.dark .text-red-600 { color: #f87171; }
+html.dark .border-\[\#0f172a\] { border-color: #94a3b8; }
+html.dark .border-\[\#0f172a\]\/40 { border-color: rgba(148, 163, 184, .45); }
+html.dark .border-red-200 { border-color: #7f1d1d; }
+html.dark .sticky.bg-white { background-color: var(--surface); }
+html.dark ::placeholder { color: #64748b; }
+html.dark .card { box-shadow: 0 1px 2px rgba(0, 0, 0, .4); }

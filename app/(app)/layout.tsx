@@ -150,6 +150,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
+            <ThemeToggle />
             <div className="grid h-[34px] w-[34px] place-items-center rounded-full bg-pri-l text-[12.5px] font-bold text-pri-d">{initials(me)}</div>
             <button className="btn btn-sm" onClick={async () => { await signOut(); router.replace("/login"); }} aria-label="Déconnexion"><span className="sm:hidden">⎋</span><span className="hidden sm:inline">Déconnexion</span></button>
           </div>
@@ -157,5 +158,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-[1240px] p-3 sm:p-4 md:p-6 2xl:max-w-[1440px] 2xl:p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+/** Bouton mode clair / sombre (mémorisé dans le navigateur). */
+function ThemeToggle() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
+  const toggle = () => {
+    const next = !dark;
+    document.documentElement.classList.toggle("dark", next);
+    try { localStorage.setItem("rh360.theme", next ? "dark" : "light"); } catch { /* navigation privée */ }
+    setDark(next);
+  };
+  return (
+    <button className="grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-line bg-white" onClick={toggle}
+      title={dark ? "Passer en mode clair" : "Passer en mode sombre"} aria-label={dark ? "Mode clair" : "Mode sombre"}>{dark ? "☀️" : "🌙"}</button>
   );
 }
