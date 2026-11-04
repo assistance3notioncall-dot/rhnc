@@ -143,7 +143,7 @@ export function PayslipView({ slip, month, onReady }: { slip: Slip; month: strin
        meta.absence_unjustified ? `${q(meta.absence_unjustified)} j injustifiée${(meta.absence_unjustified ?? 0) > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ");
 
   return (
-    <div className="mx-auto max-w-[820px] text-[13px] text-[#0f172a]">
+    <div className="payslip mx-auto max-w-[820px] text-[13px] text-[#0f172a]">
       {/* En-tête */}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b-2 border-[#0f172a] pb-3">
         <div>

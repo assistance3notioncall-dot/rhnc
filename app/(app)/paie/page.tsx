@@ -322,7 +322,7 @@ function AllSlips({ slips: initial, month, title, onClose }: { slips: Slip[]; mo
     if (!done) return;
     const t = setTimeout(() => {
       const parts = slips.map((s) => document.getElementById(`slip-all-${s.id}`)?.innerHTML ?? "");
-      printHtml(title, parts.map((h, i) => `<div style="${i < parts.length - 1 ? "page-break-after:always;break-after:page;" : ""}">${h}</div>`).join(""));
+      printHtml(title, parts.map((h) => `<div class="slip-page">${h}</div>`).join(""));
     }, 300);
     return () => clearTimeout(t);
   }, [done, slips, title]);
@@ -332,7 +332,7 @@ function AllSlips({ slips: initial, month, title, onClose }: { slips: Slip[]; mo
       <div className="h-2 overflow-hidden rounded bg-gray2-l"><div className="h-full bg-pri transition-all" style={{ width: `${(ready / Math.max(slips.length, 1)) * 100}%` }} /></div>
       {done && <div className="mt-3 flex justify-end"><button className="btn-pri" onClick={() => {
         const parts = slips.map((s) => document.getElementById(`slip-all-${s.id}`)?.innerHTML ?? "");
-        printHtml(title, parts.map((h, i) => `<div style="${i < parts.length - 1 ? "page-break-after:always;break-after:page;" : ""}">${h}</div>`).join(""));
+        printHtml(title, parts.map((h) => `<div class="slip-page">${h}</div>`).join(""));
       }}>Rouvrir l&apos;impression / PDF</button></div>}
       <div aria-hidden className="pointer-events-none fixed left-[-10000px] top-0 w-[820px]">
         {slips.map((s) => <div key={s.id} id={`slip-all-${s.id}`}><PayslipView slip={s} month={month} onReady={() => setReady((n) => n + 1)} /></div>)}
