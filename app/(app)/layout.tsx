@@ -10,11 +10,11 @@ import { dtfr, fullName, initials } from "@/lib/format";
 
 const ICON: Record<string, string> = {
   accueil: "⌂", demandes: "✎", calendrier: "▦", documents: "▤", mesrdv: "★", profil: "◉",
-  validations: "✓", pointage: "⏱", salaries: "☰", stats: "▲", paie: "₪", rapports: "◧", parametres: "⚙", admin: "⛨",
+  validations: "✓", pointage: "⏱", salaries: "☰", stats: "▲", paie: "₪", administratif: "▣", rapports: "◧", parametres: "⚙", admin: "⛨",
 };
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: "Mon espace", keys: ["accueil", "demandes", "calendrier", "documents", "mesrdv", "profil"] },
-  { title: "Gestion", keys: ["validations", "pointage", "salaries", "stats", "paie", "rapports"] },
+  { title: "Gestion", keys: ["validations", "pointage", "salaries", "stats", "paie", "administratif", "rapports"] },
   { title: "Administration", keys: ["parametres", "admin"] },
 ];
 type Notif = { id: number; title: string; body: string | null; link: string | null; read_at: string | null; created_at: string };
