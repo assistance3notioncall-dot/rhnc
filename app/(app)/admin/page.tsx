@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
+import { BankSelect } from "@/components/BankSelect";
 import { Empty, Field, Modal, PageHead, Tabs, useAction, useToast } from "@/components/ui";
 import { dfr, dtfr, fullName } from "@/lib/format";
 
@@ -22,8 +23,9 @@ const FICHE_VIDE = {
   department_id: "", manager_id: "", job_title: "", hire_date: "", contract_type: "CDI",
   contract_end: "", trial_end: "", cin: "", phone: "", email: "", birth_date: "",
   family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+  contract_signed: false as boolean,
 };
-const COMP_VIDE = { base_salary: 0, attendance_bonus: 0, transport_allowance: 0, meal_allowance: 0, cnss_number: "", rib: "" };
+const COMP_VIDE = { base_salary: 0, attendance_bonus: 0, transport_allowance: 0, meal_allowance: 0, cnss_number: "", rib: "", bank_name: "" };
 type Fiche = typeof FICHE_VIDE;
 type Comp = typeof COMP_VIDE;
 type Acces = { name: string; username?: string; temp_password?: string };
@@ -177,6 +179,7 @@ export default function Admin() {
         meal_allowance: Number(c.meal_allowance) || 0,
         cnss_number: vide(c.cnss_number.trim()),
         rib: vide(c.rib.trim()),
+        bank_name: vide(c.bank_name.trim()),
       }));
 
       const data = await invoquer("create-access",
@@ -482,6 +485,11 @@ function AjouterSalarie(
         <Field label="Embauche"><input type="date" className="inp" value={f.hire_date} onChange={set("hire_date")} /></Field>
         <Field label="Fin d&apos;essai"><input type="date" className="inp" value={f.trial_end} onChange={set("trial_end")} /></Field>
         <Field label="Fin de contrat"><input type="date" className="inp" value={f.contract_end} onChange={set("contract_end")} /></Field>
+        <Field label="Contrat signé">
+          <select className="inp" value={f.contract_signed ? "oui" : "non"} onChange={(e) => setF({ ...f, contract_signed: e.target.value === "oui" })}>
+            <option value="oui">Oui</option><option value="non">Pas encore</option>
+          </select>
+        </Field>
       </div>
 
       <h3 className="mb-2 mt-2">Coordonnées &amp; famille</h3>
@@ -510,6 +518,7 @@ function AjouterSalarie(
         <Field label="Indemnité panier"><input type="number" className="inp" value={c.meal_allowance} onChange={setc("meal_allowance")} /></Field>
         <Field label="N° CNSS"><input className="inp" value={c.cnss_number} onChange={setc("cnss_number")} /></Field>
         <Field label="RIB"><input className="inp" value={c.rib} onChange={setc("rib")} /></Field>
+        <Field label="Banque"><BankSelect value={c.bank_name} onChange={(v) => setC({ ...c, bank_name: v })} /></Field>
       </div>
 
       {f.username.trim() !== "" && !identifiant_ok && (
