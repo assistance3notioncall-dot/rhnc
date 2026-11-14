@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
+import { BankSelect } from "@/components/BankSelect";
 import { Badge, Empty, Field, Modal, PageHead, Tabs, useAction, useToast } from "@/components/ui";
 import { SalaryChangeModal } from "@/components/SalaryChange";
 import { dfr, dh, downloadCSV, fullName } from "@/lib/format";
@@ -194,14 +195,14 @@ export default function Salaries() {
 
 const EMPTY = {
   matricule: "", username: "", first_name: "", last_name: "", role_key: "brute", department_id: "", manager_id: "", job_title: "", hire_date: "",
-  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", groupe: "", hors_effectif: false as boolean, cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif",
+  contract_type: "CDI", contract_end: "", trial_end: "", exit_date: "", groupe: "", hors_effectif: false as boolean, cin: "", phone: "", email: "", birth_date: "", family_status: "", children_count: 0, address: "", emergency_contact: "", status: "actif", contract_signed: false as boolean,
 };
 const COMP = {
-  base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "",
+  base_salary: 0, transport_allowance: 0, meal_allowance: 0, attendance_bonus: 0, cnss_number: "", rib: "", bank_name: "",
   cnss_mode: "plafonne", cnss_base: 6000 as number | string, ir_applies: false, in_payroll: true, pay_method: "",
   pay_plan: "", cnf_codes: "" as string | string[], rdv_prime: true, rdv_prime_paid: false, cnss_employee_fixed: "" as number | string,
 };
-const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid,cnss_employee_fixed";
+const COMP_COLS = "transport_allowance,meal_allowance,attendance_bonus,cnss_number,rib,bank_name,cnss_mode,cnss_base,ir_applies,in_payroll,pay_method,pay_plan,cnf_codes,rdv_prime,rdv_prime_paid,cnss_employee_fixed";
 // Responsables possibles selon le groupe : agents → Monim (abdel) ou Kawtar ; back office / entretien → Amal ; direction → Monim ou Amal
 const RESP_BY_GROUP: Record<string, string[]> = { agents: ["abdel", "kawtar"], back_office: ["amal"], extra: ["amal"], direction: ["abdel", "amal"] };
 const CNSS_MODES: [string, string][] = [
@@ -215,7 +216,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
   const { busy, run } = useAction();
   useEffect(() => {
     if (!id) return;
-    supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : k === "hors_effectif" ? false : "")])) as typeof EMPTY));
+    supabase.from("profiles").select("*").eq("id", id).single().then(({ data }) => data && setF(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, data[k] ?? (k === "children_count" ? 0 : k === "hors_effectif" || k === "contract_signed" ? false : "")])) as typeof EMPTY));
     // base_salary n'est pas lisible directement (salaire masquable) : affiché via `salary`
     supabase.from("employee_compensation").select(COMP_COLS).eq("profile_id", id).maybeSingle().then(({ data }) => data && setC(Object.fromEntries(Object.keys(COMP).map((k) => [k, (data as Record<string, unknown>)[k] ?? (k in COMP && typeof COMP[k as keyof typeof COMP] === "boolean" ? COMP[k as keyof typeof COMP] : "")])) as typeof COMP));
   }, [id]);
@@ -238,7 +239,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
       // Date de sortie passée → statut « sorti » (fiche en historique, paie au prorata du mois de sortie)
       if (f.exit_date && f.exit_date <= new Date().toISOString().slice(0, 10)) row.status = "sorti";
       if (!f.exit_date && f.status === "sorti") throw new Error("Indiquez la date de sortie.");
-      const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib),
+      const comp = { transport_allowance: Number(c.transport_allowance) || 0, meal_allowance: Number(c.meal_allowance) || 0, attendance_bonus: Number(c.attendance_bonus) || 0, cnss_number: nn(c.cnss_number), rib: nn(c.rib), bank_name: nn(String(c.bank_name ?? "").trim()),
         cnss_mode: c.cnss_mode || "plafonne", cnss_base: c.cnss_base === "" ? null : Number(c.cnss_base), ir_applies: !!c.ir_applies, in_payroll: !!c.in_payroll, pay_method: nn(c.pay_method),
         pay_plan: nn(c.pay_plan), rdv_prime: !!c.rdv_prime, rdv_prime_paid: !!c.rdv_prime_paid, cnss_employee_fixed: c.cnss_employee_fixed === "" || c.cnss_employee_fixed == null ? null : Number(c.cnss_employee_fixed), cnf_codes: (Array.isArray(c.cnf_codes) ? c.cnf_codes : String(c.cnf_codes).split(/[\s,;]+/)).map((x) => x.trim().toUpperCase()).filter(Boolean) };
       if (id) {
@@ -282,6 +283,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Fin d'essai"><input type="date" className="inp" value={f.trial_end} onChange={set("trial_end")} /></Field>
         <Field label="Fin de contrat"><input type="date" className="inp" value={f.contract_end} onChange={set("contract_end")} /></Field>
         <Field label="Date de sortie"><input type="date" className="inp" value={f.exit_date} onChange={set("exit_date")} /></Field>
+        <Field label="Contrat signé"><select className="inp" value={f.contract_signed ? "oui" : "non"} onChange={(e) => setF({ ...f, contract_signed: e.target.value === "oui" })}><option value="oui">Oui</option><option value="non">Pas encore</option></select></Field>
       </div>
       {f.exit_date && <p className="-mt-1 mb-2 text-[12.5px] text-warn">Sortie le {dfr(f.exit_date)} : payé(e) au prorata des jours ouvrables jusqu&apos;à cette date, puis retiré(e) de la liste active (historique).</p>}
       <h3 className="mb-2 mt-2">Coordonnées & famille</h3>
@@ -305,6 +307,7 @@ function FicheModal({ id, salary, roles, depts, people, onClose, onDone }: { id:
         <Field label="Indemnité panier"><input type="number" className="inp" value={c.meal_allowance} onChange={setc("meal_allowance")} /></Field>
         <Field label="N° CNSS"><input className="inp" value={c.cnss_number} onChange={setc("cnss_number")} /></Field>
         <Field label="RIB"><input className="inp" value={c.rib} onChange={setc("rib")} /></Field>
+        <Field label="Banque"><BankSelect value={String(c.bank_name ?? "")} onChange={(v) => setC({ ...c, bank_name: v })} /></Field>
       </div>
       <h3 className="mb-2 mt-2">CNSS & paiement</h3>
       <div className="grid gap-x-3 sm:grid-cols-3">
