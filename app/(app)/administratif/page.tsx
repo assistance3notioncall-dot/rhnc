@@ -7,7 +7,7 @@ import { Empty, Field, Modal, PageHead, Tabs, useAction } from "@/components/ui"
 import { dfr, downloadCSV, fullName } from "@/lib/format";
 
 // Onglet « Suivi Administratif » : informations administratives du personnel (ex-feuille Notion Workforce).
-// Réservé au super admin (module non délégable + contrôle isSuper ci-dessous).
+// Accès réglé par rôle dans Utilisateurs & rôles : « voir » = consulter, « modifier » = changer statut, contrat, banque.
 // Même regroupement que Paie et Salariés (profiles.groupe).
 const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
 const groupRank = (g: string) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
@@ -19,13 +19,14 @@ const STATUS_TONE: Record<string, string> = { actif: "text-ok", suspendu: "text-
 type Row = {
   id: string; first_name: string; last_name: string; matricule: string | null; cin: string | null; address: string | null;
   birth_date: string | null; phone: string | null; emergency_contact: string | null; hire_date: string | null;
-  status: string; groupe: string | null; contract_signed: boolean | null; hors_effectif: boolean | null;
+  status: string; groupe: string | null; contract_signed: boolean | null;
 };
-type Comp = { profile_id: string; cnss_number: string | null; rib: string | null; bank_name: string | null };
 type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null };
 
 export default function Administratif() {
-  const { isSuper } = useSession();
+  const { can } = useSession();
+  const canView = can("administratif");
+  const canEdit = can("administratif", true);
   const [lines, setLines] = useState<Line[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [fGroup, setFGroup] = useState("tous");
@@ -46,27 +47,13 @@ export default function Administratif() {
   }, "Contrat enregistré");
 
   const load = useCallback(async () => {
-    const [{ data: p }, { data: c }] = await Promise.all([
-      supabase.from("profiles").select("id,first_name,last_name,matricule,cin,address,birth_date,phone,emergency_contact,hire_date,status,groupe,contract_signed,hors_effectif"),
-      supabase.from("employee_compensation").select("profile_id,cnss_number,rib,bank_name"),
-    ]);
-    const comp = new Map(((c as Comp[]) ?? []).map((x) => [x.profile_id, x]));
-    // Comptes hors effectif (Administrateur, Abdelmounime…) : pas dans ce tableau
-    setLines(((p as Row[]) ?? []).filter((r) => !r.hors_effectif).map((r) => {
-      const k = comp.get(r.id);
-      return { ...r, g: r.groupe ?? "agents", cnss: k?.cnss_number ?? null, rib: k?.rib ?? null, bank: k?.bank_name ?? null };
-    }));
+    // Fonction en base : vérifie le droit « voir » et exclut les comptes hors effectif
+    const { data } = await supabase.rpc("admin_roster");
+    setLines(((data as (Row & { cnss_number: string | null; rib: string | null; bank_name: string | null })[]) ?? []).map((r) => (
+      { ...r, g: r.groupe ?? "agents", cnss: r.cnss_number, rib: r.rib, bank: r.bank_name })));
     setLoaded(true);
   }, []);
-  useEffect(() => { if (isSuper) load(); }, [isSuper, load]);
-
-  if (!isSuper)
-    return (
-      <div className="card mx-auto mt-10 max-w-md text-center">
-        <h2>Accès non autorisé</h2>
-        <p className="mut mt-2">Cet onglet est réservé au super admin.</p>
-      </div>
-    );
+  useEffect(() => { if (canView) load(); }, [canView, load]);
 
   const needle = q.trim().toLowerCase();
   const byStatus = lines.filter((l) => fStatus === "tous" || (fStatus === "actifs" ? l.status === "actif" : l.status !== "actif"));
@@ -125,7 +112,7 @@ export default function Administratif() {
                     {l.matricule && <div className="mut text-[11.5px]">{l.matricule}</div>}
                   </td>
                   <td>
-                    <select className={`inp w-auto py-1 text-[12.5px] ${STATUS_TONE[l.status] ?? ""}`} disabled={busy} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${STATUS_TONE[l.status] ?? ""}`} disabled={busy || !canEdit} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
                       {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </td>
@@ -139,11 +126,11 @@ export default function Administratif() {
                   {cell(l.bank, "bg-[#f0f9ff]")}
                   {cell(l.hire_date ? dfr(l.hire_date) : null)}
                   <td>
-                    <select className={`inp w-auto py-1 text-[12.5px] ${l.contract_signed ? "text-ok" : "text-warn"}`} disabled={busy} value={l.contract_signed ? "oui" : "non"} onChange={(e) => setContract(l, e.target.value === "oui")}>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${l.contract_signed ? "text-ok" : "text-warn"}`} disabled={busy || !canEdit} value={l.contract_signed ? "oui" : "non"} onChange={(e) => setContract(l, e.target.value === "oui")}>
                       <option value="oui">Oui</option><option value="non">Pas encore</option>
                     </select>
                   </td>
-                  <td className="text-right"><button className="btn btn-sm" onClick={() => setEdit(l)}>Banque</button></td>
+                  <td className="text-right">{canEdit && <button className="btn btn-sm" onClick={() => setEdit(l)}>Banque</button>}</td>
                 </tr>
               </Fragment>);
             })}</tbody>
