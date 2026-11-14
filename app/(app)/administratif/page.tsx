@@ -3,10 +3,10 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
-import { Badge, Empty, Field, Modal, PageHead, Tabs, useAction } from "@/components/ui";
+import { Empty, Field, Modal, PageHead, Tabs, useAction } from "@/components/ui";
 import { dfr, downloadCSV, fullName } from "@/lib/format";
 
-// Onglet « Administratif » : informations administratives du personnel (ex-feuille Notion Workforce).
+// Onglet « Suivi Administratif » : informations administratives du personnel (ex-feuille Notion Workforce).
 // Réservé au super admin (module non délégable + contrôle isSuper ci-dessous).
 // Même regroupement que Paie et Salariés (profiles.groupe).
 const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
@@ -14,11 +14,12 @@ const groupRank = (g: string) => { const i = GROUPS.findIndex(([k]) => k === g);
 const groupLabel = (g: string) => GROUPS.find(([k]) => k === g)?.[1] ?? "Sans groupe";
 const STATUS_RANK: Record<string, number> = { actif: 0, suspendu: 1, inactif: 2, sorti: 3 };
 const STATUS_LABEL: Record<string, string> = { actif: "Actif", suspendu: "Suspendu", inactif: "Inactif", sorti: "Sorti" };
+const STATUS_TONE: Record<string, string> = { actif: "text-ok", suspendu: "text-warn", inactif: "text-mut", sorti: "text-err" };
 
 type Row = {
   id: string; first_name: string; last_name: string; matricule: string | null; cin: string | null; address: string | null;
   birth_date: string | null; phone: string | null; emergency_contact: string | null; hire_date: string | null;
-  status: string; groupe: string | null; contract_signed: boolean | null;
+  status: string; groupe: string | null; contract_signed: boolean | null; hors_effectif: boolean | null;
 };
 type Comp = { profile_id: string; cnss_number: string | null; rib: string | null; bank_name: string | null };
 type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null };
@@ -31,14 +32,27 @@ export default function Administratif() {
   const [fStatus, setFStatus] = useState("actifs");
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<Line | null>(null);
+  const { busy, run } = useAction();
+  const setStatus = (l: Line, v: string) => {
+    if (v !== "actif" && !confirm(`Passer ${fullName(l)} en « ${STATUS_LABEL[v]} » ? Son accès au site sera coupé.`)) return;
+    run(async () => {
+      must(await supabase.rpc("set_admin_status", { p_profile: l.id, p_status: v }));
+      setLines((x) => x.map((y) => (y.id === l.id ? { ...y, status: v } : y)));
+    }, "Statut enregistré");
+  };
+  const setContract = (l: Line, v: boolean) => run(async () => {
+    must(await supabase.rpc("set_admin_info", { p_profile: l.id, p_bank: l.bank ?? "", p_contract_signed: v }));
+    setLines((x) => x.map((y) => (y.id === l.id ? { ...y, contract_signed: v } : y)));
+  }, "Contrat enregistré");
 
   const load = useCallback(async () => {
     const [{ data: p }, { data: c }] = await Promise.all([
-      supabase.from("profiles").select("id,first_name,last_name,matricule,cin,address,birth_date,phone,emergency_contact,hire_date,status,groupe,contract_signed"),
+      supabase.from("profiles").select("id,first_name,last_name,matricule,cin,address,birth_date,phone,emergency_contact,hire_date,status,groupe,contract_signed,hors_effectif"),
       supabase.from("employee_compensation").select("profile_id,cnss_number,rib,bank_name"),
     ]);
     const comp = new Map(((c as Comp[]) ?? []).map((x) => [x.profile_id, x]));
-    setLines(((p as Row[]) ?? []).map((r) => {
+    // Comptes hors effectif (Administrateur, Abdelmounime…) : pas dans ce tableau
+    setLines(((p as Row[]) ?? []).filter((r) => !r.hors_effectif).map((r) => {
       const k = comp.get(r.id);
       return { ...r, g: r.groupe ?? "agents", cnss: k?.cnss_number ?? null, rib: k?.rib ?? null, bank: k?.bank_name ?? null };
     }));
@@ -74,7 +88,7 @@ export default function Administratif() {
 
   return (
     <Guard module="administratif">
-      <PageHead title="Administratif" sub="Informations administratives du personnel : identité, coordonnées, CNSS, banque et contrat.">
+      <PageHead title="Suivi Administratif" sub="Informations administratives du personnel : identité, coordonnées, CNSS, banque et contrat.">
         <input className="inp w-56" placeholder="Rechercher (nom, CIN, tél.)" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="inp w-auto" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="actifs">Actifs</option><option value="inactifs">Inactifs / sortis</option><option value="tous">Tous</option>
@@ -110,7 +124,11 @@ export default function Administratif() {
                     <div className="font-medium">{fullName(l)}</div>
                     {l.matricule && <div className="mut text-[11.5px]">{l.matricule}</div>}
                   </td>
-                  <td><Badge status={l.status} label={STATUS_LABEL[l.status] ?? l.status} /></td>
+                  <td>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${STATUS_TONE[l.status] ?? ""}`} disabled={busy} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
+                      {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </td>
                   {cell(l.cin, "font-mono text-[12px]")}
                   <td className="max-w-[240px] truncate" title={l.address ?? ""}>{l.address || <span className="text-mut">—</span>}</td>
                   {cell(l.birth_date ? dfr(l.birth_date) : null)}
@@ -120,10 +138,12 @@ export default function Administratif() {
                   {cell(l.rib, "bg-[#f0f9ff] font-mono text-[12px]")}
                   {cell(l.bank, "bg-[#f0f9ff]")}
                   {cell(l.hire_date ? dfr(l.hire_date) : null)}
-                  <td>{l.contract_signed
-                    ? <span className="badge bg-ok-l text-ok">Oui</span>
-                    : <span className="badge bg-warn-l text-warn">Pas encore</span>}</td>
-                  <td className="text-right"><button className="btn btn-sm" onClick={() => setEdit(l)}>Modifier</button></td>
+                  <td>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${l.contract_signed ? "text-ok" : "text-warn"}`} disabled={busy} value={l.contract_signed ? "oui" : "non"} onChange={(e) => setContract(l, e.target.value === "oui")}>
+                      <option value="oui">Oui</option><option value="non">Pas encore</option>
+                    </select>
+                  </td>
+                  <td className="text-right"><button className="btn btn-sm" onClick={() => setEdit(l)}>Banque</button></td>
                 </tr>
               </Fragment>);
             })}</tbody>
@@ -137,19 +157,13 @@ export default function Administratif() {
 
 function EditModal({ line, onClose, onDone }: { line: Line; onClose: () => void; onDone: () => void }) {
   const [bank, setBank] = useState(line.bank ?? "");
-  const [signed, setSigned] = useState(!!line.contract_signed);
   const { busy, run } = useAction();
   return (
-    <Modal title={`Administratif — ${fullName(line)}`} onClose={onClose}>
+    <Modal title={`Banque — ${fullName(line)}`} onClose={onClose}>
       <Field label="Banque"><input className="inp" placeholder="Ex. CIH, Attijariwafa Bank, Barid Bank…" value={bank} onChange={(e) => setBank(e.target.value)} /></Field>
-      <Field label="Contrat">
-        <select className="inp" value={signed ? "oui" : "non"} onChange={(e) => setSigned(e.target.value === "oui")}>
-          <option value="oui">Oui (signé)</option><option value="non">Pas encore</option>
-        </select>
-      </Field>
       <p className="mut mb-3 text-[12.5px]">CIN, adresse, contacts, CNSS, RIB et date de rentrée se modifient depuis la fiche dans « Salariés ».</p>
       <div className="flex justify-end"><button className="btn-pri" disabled={busy} onClick={() => run(async () => {
-        must(await supabase.rpc("set_admin_info", { p_profile: line.id, p_bank: bank, p_contract_signed: signed }));
+        must(await supabase.rpc("set_admin_info", { p_profile: line.id, p_bank: bank, p_contract_signed: !!line.contract_signed }));
         onDone();
       }, "Enregistré")}>Enregistrer</button></div>
     </Modal>
