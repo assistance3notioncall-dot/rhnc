@@ -13,8 +13,9 @@ const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", 
 const groupRank = (g: string) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
 const groupLabel = (g: string) => GROUPS.find(([k]) => k === g)?.[1] ?? "Sans groupe";
 const STATUS_RANK: Record<string, number> = { actif: 0, suspendu: 1, inactif: 2, sorti: 3 };
-const STATUS_LABEL: Record<string, string> = { actif: "Actif", suspendu: "Suspendu", inactif: "Inactif", sorti: "Sorti" };
-const STATUS_TONE: Record<string, string> = { actif: "text-ok", suspendu: "text-warn", inactif: "text-mut", sorti: "text-err" };
+// Deux choix seulement : Actif / Inactif (suspendu et sorti en base s'affichent « Inactif »)
+const STATUS_LABEL: Record<string, string> = { actif: "Actif", inactif: "Inactif" };
+const simple = (s: string) => (s === "actif" ? "actif" : "inactif");
 
 type Row = {
   id: string; first_name: string; last_name: string; matricule: string | null; cin: string | null; address: string | null;
@@ -35,6 +36,7 @@ export default function Administratif() {
   const [edit, setEdit] = useState<Line | null>(null);
   const { busy, run } = useAction();
   const setStatus = (l: Line, v: string) => {
+    if (v === simple(l.status)) return;
     if (v !== "actif" && !confirm(`Passer ${fullName(l)} en « ${STATUS_LABEL[v]} » ? Son accès au site sera coupé.`)) return;
     run(async () => {
       must(await supabase.rpc("set_admin_status", { p_profile: l.id, p_status: v }));
@@ -66,7 +68,7 @@ export default function Administratif() {
   const count = (g: string) => byStatus.filter((l) => l.g === g).length;
 
   const exportCSV = () => downloadCSV(`administratif-${new Date().toISOString().slice(0, 10)}.csv`, shown.map((l) => ({
-    groupe: groupLabel(l.g), statut: STATUS_LABEL[l.status] ?? l.status, nom: fullName(l), cin: l.cin ?? "", adresse: l.address ?? "",
+    groupe: groupLabel(l.g), statut: STATUS_LABEL[simple(l.status)], nom: fullName(l), cin: l.cin ?? "", adresse: l.address ?? "",
     ddn: l.birth_date ? dfr(l.birth_date) : "", contact: l.phone ?? "", urgence: l.emergency_contact ?? "", cnss: l.cnss ?? "",
     rib: l.rib ?? "", banque: l.bank ?? "", date_rentree: l.hire_date ? dfr(l.hire_date) : "", contrat: l.contract_signed ? "oui" : "pas encore",
   })));
@@ -78,7 +80,7 @@ export default function Administratif() {
       <PageHead title="Suivi Administratif" sub="Informations administratives du personnel : identité, coordonnées, CNSS, banque et contrat.">
         <input className="inp w-56" placeholder="Rechercher (nom, CIN, tél.)" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="inp w-auto" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="actifs">Actifs</option><option value="inactifs">Inactifs / sortis</option><option value="tous">Tous</option>
+          <option value="actifs">Actifs</option><option value="inactifs">Inactifs</option><option value="tous">Tous</option>
         </select>
         <button className="btn" disabled={!shown.length} onClick={exportCSV}>Exporter (CSV)</button>
       </PageHead>
@@ -112,7 +114,7 @@ export default function Administratif() {
                     {l.matricule && <div className="mut text-[11.5px]">{l.matricule}</div>}
                   </td>
                   <td>
-                    <select className={`inp w-auto py-1 text-[12.5px] ${STATUS_TONE[l.status] ?? ""}`} disabled={busy || !canEdit} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${l.status === "actif" ? "text-ok" : "text-mut"}`} disabled={busy || !canEdit} value={simple(l.status)} onChange={(e) => setStatus(l, e.target.value)}>
                       {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </td>
