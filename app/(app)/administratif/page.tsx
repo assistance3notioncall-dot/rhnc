@@ -22,7 +22,7 @@ type Row = {
   birth_date: string | null; phone: string | null; emergency_contact: string | null; hire_date: string | null;
   status: string; groupe: string | null; contract_signed: boolean | null;
 };
-type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null };
+type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null; cnssOk: boolean };
 
 export default function Administratif() {
   const { can } = useSession();
@@ -47,12 +47,16 @@ export default function Administratif() {
     must(await supabase.rpc("set_admin_info", { p_profile: l.id, p_bank: l.bank ?? "", p_contract_signed: v }));
     setLines((x) => x.map((y) => (y.id === l.id ? { ...y, contract_signed: v } : y)));
   }, "Contrat enregistré");
+  const setCnss = (l: Line, v: boolean) => run(async () => {
+    must(await supabase.rpc("set_admin_cnss", { p_profile: l.id, p_declared: v }));
+    setLines((x) => x.map((y) => (y.id === l.id ? { ...y, cnssOk: v } : y)));
+  }, "CNSS enregistrée");
 
   const load = useCallback(async () => {
     // Fonction en base : vérifie le droit « voir » et exclut les comptes hors effectif
     const { data } = await supabase.rpc("admin_roster");
-    setLines(((data as (Row & { cnss_number: string | null; rib: string | null; bank_name: string | null })[]) ?? []).map((r) => (
-      { ...r, g: r.groupe ?? "agents", cnss: r.cnss_number, rib: r.rib, bank: r.bank_name })));
+    setLines(((data as (Row & { cnss_number: string | null; rib: string | null; bank_name: string | null; cnss_declared: boolean | null })[]) ?? []).map((r) => (
+      { ...r, g: r.groupe ?? "agents", cnss: r.cnss_number, rib: r.rib, bank: r.bank_name, cnssOk: !!r.cnss_declared })));
     setLoaded(true);
   }, []);
   useEffect(() => { if (canView) load(); }, [canView, load]);
@@ -70,7 +74,7 @@ export default function Administratif() {
   const exportCSV = () => downloadCSV(`administratif-${new Date().toISOString().slice(0, 10)}.csv`, shown.map((l) => ({
     groupe: groupLabel(l.g), statut: STATUS_LABEL[simple(l.status)], nom: fullName(l), cin: l.cin ?? "", adresse: l.address ?? "",
     ddn: l.birth_date ? dfr(l.birth_date) : "", contact: l.phone ?? "", urgence: l.emergency_contact ?? "", cnss: l.cnss ?? "",
-    rib: l.rib ?? "", banque: l.bank ?? "", date_rentree: l.hire_date ? dfr(l.hire_date) : "", contrat: l.contract_signed ? "oui" : "pas encore",
+    rib: l.rib ?? "", banque: l.bank ?? "", date_rentree: l.hire_date ? dfr(l.hire_date) : "", contrat: l.contract_signed ? "oui" : "pas encore", cnss_declaree: l.cnssOk ? "oui" : "non",
   })));
 
   const cell = (v: string | null | undefined, cls = "") => <td className={cls}>{v ? v : <span className="text-mut">—</span>}</td>;
@@ -96,7 +100,7 @@ export default function Administratif() {
                 <th className="sticky left-0 z-20 bg-[#fafbfd]">Salarié</th>
                 <th>Statut</th><th>CIN</th><th>Adresse</th><th>Date de naissance</th><th>Contact</th><th>Contact urgent</th>
                 <th className="bg-[#f0f9ff]">CNSS</th><th className="bg-[#f0f9ff]">RIB</th><th className="bg-[#f0f9ff]">Banque</th>
-                <th>Date de rentrée</th><th>Contrat</th><th />
+                <th>Date de rentrée</th><th>Contrat</th><th>CNSS</th><th />
               </tr>
             </thead>
             <tbody>{shown.map((l, i) => {
@@ -104,7 +108,7 @@ export default function Administratif() {
               return (<Fragment key={l.id}>
                 {head && (
                   <tr className="bg-gray2-l text-[12px]">
-                    <td colSpan={13} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
+                    <td colSpan={14} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
                       {groupLabel(l.g)} <span className="mut font-normal normal-case">· {shown.filter((x) => x.g === l.g).length}</span>
                     </td>
                   </tr>)}
@@ -130,6 +134,11 @@ export default function Administratif() {
                   <td>
                     <select className={`inp w-auto py-1 text-[12.5px] ${l.contract_signed ? "text-ok" : "text-warn"}`} disabled={busy || !canEdit} value={l.contract_signed ? "oui" : "non"} onChange={(e) => setContract(l, e.target.value === "oui")}>
                       <option value="oui">Oui</option><option value="non">Pas encore</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select className={`inp w-auto py-1 text-[12.5px] ${l.cnssOk ? "text-ok" : "text-warn"}`} disabled={busy || !canEdit} value={l.cnssOk ? "oui" : "non"} onChange={(e) => setCnss(l, e.target.value === "oui")}>
+                      <option value="oui">Oui</option><option value="non">Non</option>
                     </select>
                   </td>
                   <td className="text-right">{canEdit && <button className="btn btn-sm" onClick={() => setEdit(l)}>Banque</button>}</td>
