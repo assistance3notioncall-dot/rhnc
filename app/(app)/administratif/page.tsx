@@ -21,7 +21,7 @@ const simple = (s: string) => (s === "actif" ? "actif" : "inactif");
 type Row = {
   id: string; first_name: string; last_name: string; matricule: string | null; cin: string | null; address: string | null;
   birth_date: string | null; phone: string | null; emergency_contact: string | null; hire_date: string | null;
-  status: string; groupe: string | null; contract_signed: boolean | null;
+  status: string; groupe: string | null; contract_signed: boolean | null; validation_date: string | null;
 };
 type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null; cnssOk: boolean };
 
@@ -76,7 +76,7 @@ export default function Administratif() {
   const exportCSV = () => downloadCSV(`administratif-${new Date().toISOString().slice(0, 10)}.csv`, shown.map((l) => ({
     groupe: groupLabel(l.g), statut: STATUS_LABEL[simple(l.status)], nom: fullName(l), cin: l.cin ?? "", adresse: l.address ?? "",
     ddn: l.birth_date ? dfr(l.birth_date) : "", contact: l.phone ?? "", urgence: l.emergency_contact ?? "", cnss: l.cnss ?? "",
-    rib: l.rib ?? "", banque: l.bank ?? "", date_rentree: l.hire_date ? dfr(l.hire_date) : "", contrat: l.contract_signed ? "oui" : "pas encore", cnss_declaree: l.cnssOk ? "oui" : "non",
+    rib: l.rib ?? "", banque: l.bank ?? "", date_rentree: l.hire_date ? dfr(l.hire_date) : "", date_validation: l.validation_date ? dfr(l.validation_date) : "", contrat: l.contract_signed ? "oui" : "pas encore", cnss_declaree: l.cnssOk ? "oui" : "non",
   })));
 
   const cell = (v: string | null | undefined, cls = "") => <td className={cls}>{v ? v : <span className="text-mut">—</span>}</td>;
@@ -103,7 +103,7 @@ export default function Administratif() {
                 <th className="sticky left-0 z-20 bg-[#fafbfd]">Salarié</th>
                 <th>Statut</th><th>CIN</th><th>Adresse</th><th>Date de naissance</th><th>Contact</th><th>Contact urgent</th>
                 <th className="bg-[#f0f9ff]">CNSS</th><th className="bg-[#f0f9ff]">RIB</th><th className="bg-[#f0f9ff]">Banque</th>
-                <th>Date de rentrée</th><th>Contrat</th><th>CNSS</th><th />
+                <th>Date de rentrée</th><th>Date de validation</th><th>Contrat</th><th>CNSS</th><th />
               </tr>
             </thead>
             <tbody>{shown.map((l, i) => {
@@ -111,7 +111,7 @@ export default function Administratif() {
               return (<Fragment key={l.id}>
                 {head && (
                   <tr className="bg-gray2-l text-[12px]">
-                    <td colSpan={14} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
+                    <td colSpan={15} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
                       {groupLabel(l.g)} <span className="mut font-normal normal-case">· {shown.filter((x) => x.g === l.g).length}</span>
                     </td>
                   </tr>)}
@@ -134,6 +134,7 @@ export default function Administratif() {
                   {cell(l.rib, "bg-[#f0f9ff] font-mono text-[12px]")}
                   {cell(l.bank, "bg-[#f0f9ff]")}
                   {cell(l.hire_date ? dfr(l.hire_date) : null)}
+                  {cell(l.validation_date ? dfr(l.validation_date) : null)}
                   <td>
                     <select className={`inp w-auto py-1 text-[12.5px] ${l.contract_signed ? "text-ok" : "text-warn"}`} disabled={busy || !canEdit} value={l.contract_signed ? "oui" : "non"} onChange={(e) => setContract(l, e.target.value === "oui")}>
                       <option value="oui">Oui</option><option value="non">Pas encore</option>
