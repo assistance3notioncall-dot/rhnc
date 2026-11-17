@@ -174,7 +174,8 @@ function EditModal({ line, onClose, onDone }: { line: Line; onClose: () => void;
 
 const AGENT_ROLES: [string, string][] = [["brute", "Agent brute"], ["qualif", "Agent qualif"], ["soustraitant_d", "Soustraitant D"], ["soustraitan_s", "SousTraitan S"]];
 const AGENT_VIDE = {
-  first_name: "", last_name: "", role_key: "brute", phone: "", emergency_contact: "", birth_date: "", hire_date: "",
+  first_name: "", last_name: "", role_key: "brute", phone: "", emergency_contact: "", birth_date: "", hire_date: "", validation_date: "",
+  family_status: "", children_count: 0 as number | string,
   cin: "", address: "", cnss_number: "", rib: "", bank_name: "", contract_signed: false, cnss_declared: false,
 };
 
@@ -208,6 +209,10 @@ function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
         <Field label="Contact urgent"><input className="inp" placeholder="06…" value={a.emergency_contact} onChange={set("emergency_contact")} /></Field>
         <Field label="Date de naissance"><input type="date" className="inp" value={a.birth_date} onChange={set("birth_date")} /></Field>
         <Field label="Date de rentrée"><input type="date" className="inp" value={a.hire_date} onChange={set("hire_date")} /></Field>
+        <Field label="Date de validation"><input type="date" className="inp" value={a.validation_date} onChange={set("validation_date")} /></Field>
+        <Field label="Situation familiale"><select className="inp" value={a.family_status} onChange={set("family_status")}>
+          <option value="">—</option>{["Célibataire", "Marié(e)", "Divorcé(e)", "Veuf(ve)"].map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+        <Field label="Enfants à charge"><input type="number" min={0} max={20} className="inp" value={a.children_count} onChange={set("children_count")} /></Field>
         <Field label="CIN (facultatif)"><input className="inp" value={a.cin} onChange={set("cin")} /></Field>
         <Field label="Contrat"><select className="inp" value={a.contract_signed ? "oui" : "non"} onChange={(e) => setA({ ...a, contract_signed: e.target.value === "oui" })}>
           <option value="non">Pas encore</option><option value="oui">Oui</option></select></Field>
