@@ -147,31 +147,16 @@ export default function Administratif() {
                       <option value="oui">Oui</option><option value="non">Non</option>
                     </select>
                   </td>
-                  <td className="text-right">{canEdit && <button className="btn btn-sm" onClick={() => setEdit(l)}>Banque</button>}</td>
+                  <td className="text-right"><button className="btn btn-sm" onClick={() => setEdit(l)}>Fiche</button></td>
                 </tr>
               </Fragment>);
             })}</tbody>
           </table>
         )}
       </div>
-      {edit && <EditModal line={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {edit && <FicheModal id={edit.id} canEdit={canEdit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
       {adding && <AddAgentModal onClose={() => setAdding(false)} onDone={() => { setAdding(false); setFGroup("agents"); load(); }} />}
     </Guard>
-  );
-}
-
-function EditModal({ line, onClose, onDone }: { line: Line; onClose: () => void; onDone: () => void }) {
-  const [bank, setBank] = useState(line.bank ?? "");
-  const { busy, run } = useAction();
-  return (
-    <Modal title={`Banque — ${fullName(line)}`} onClose={onClose}>
-      <Field label="Banque"><input className="inp" placeholder="Ex. CIH, Attijariwafa Bank, Barid Bank…" value={bank} onChange={(e) => setBank(e.target.value)} /></Field>
-      <p className="mut mb-3 text-[12.5px]">CIN, adresse, contacts, CNSS, RIB et date de rentrée se modifient depuis la fiche dans « Salariés ».</p>
-      <div className="flex justify-end"><button className="btn-pri" disabled={busy} onClick={() => run(async () => {
-        must(await supabase.rpc("set_admin_info", { p_profile: line.id, p_bank: bank, p_contract_signed: !!line.contract_signed }));
-        onDone();
-      }, "Enregistré")}>Enregistrer</button></div>
-    </Modal>
   );
 }
 
@@ -233,6 +218,76 @@ function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
         const r = must(await supabase.rpc("admin_add_agent", { p: a })) as { username: string; password: string };
         setCree(r);
       }, "Agent ajouté")}>Ajouter l&apos;agent</button></div>
+    </Modal>
+  );
+}
+
+type Fiche = {
+  first_name: string; last_name: string; username: string | null; role_label: string | null; status: string;
+  phone: string; emergency_contact: string; birth_date: string; hire_date: string; validation_date: string;
+  family_status: string; children_count: number | string; cin: string; address: string; contract_signed: boolean;
+  cnss_number: string; cnss_declared: boolean; rib: string; bank_name: string;
+};
+
+/** Fiche administrative (sans salaire ni paie). Lecture seule sans le droit « modifier ». */
+function FicheModal({ id, canEdit, onClose, onDone }: { id: string; canEdit: boolean; onClose: () => void; onDone: () => void }) {
+  const [f, setF] = useState<Fiche | null>(null);
+  const [err, setErr] = useState("");
+  const { busy, run } = useAction();
+  useEffect(() => {
+    supabase.rpc("admin_get_fiche", { p_profile: id }).then(({ data, error }) => {
+      if (error) return setErr(error.message);
+      const d = data as Record<string, unknown>;
+      setF(Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v ?? (k === "children_count" ? 0 : "")])) as unknown as Fiche);
+    });
+  }, [id]);
+  if (err) return <Modal title="Fiche" onClose={onClose}><p className="text-err">{err}</p></Modal>;
+  if (!f) return <Modal title="Fiche" onClose={onClose}><Empty>Chargement…</Empty></Modal>;
+  const ro = !canEdit;
+  const set = (k: keyof Fiche) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const yn = (k: "contract_signed" | "cnss_declared", oui: string, non: string) => (
+    <select className="inp" disabled={ro} value={f[k] ? "oui" : "non"} onChange={(e) => setF({ ...f, [k]: e.target.value === "oui" })}>
+      <option value="oui">{oui}</option><option value="non">{non}</option></select>);
+  return (
+    <Modal title={`Fiche — ${f.first_name} ${f.last_name}`} onClose={onClose} wide>
+      <p className="mut mb-3 text-[12.5px]">{f.role_label ?? "—"}{f.username ? ` · identifiant ${f.username}` : ""}{ro ? " · lecture seule" : ""}</p>
+      <fieldset disabled={ro}>
+        <h3 className="mb-2">Identité</h3>
+        <div className="grid gap-x-3 sm:grid-cols-3">
+          <Field label="Prénom *"><input className="inp" value={f.first_name} onChange={set("first_name")} /></Field>
+          <Field label="Nom *"><input className="inp" value={f.last_name} onChange={set("last_name")} /></Field>
+          <Field label="Statut"><select className="inp" value={f.status === "actif" ? "actif" : "inactif"} onChange={set("status")}>
+            <option value="actif">Actif</option><option value="inactif">Inactif</option></select></Field>
+          <Field label="CIN"><input className="inp" value={f.cin} onChange={set("cin")} /></Field>
+          <Field label="Date de naissance"><input type="date" className="inp" value={f.birth_date} onChange={set("birth_date")} /></Field>
+          <Field label="Situation familiale"><select className="inp" value={f.family_status} onChange={set("family_status")}>
+            <option value="">—</option>{["Célibataire", "Marié(e)", "Divorcé(e)", "Veuf(ve)"].map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+          <Field label="Enfants à charge"><input type="number" min={0} max={20} className="inp" value={f.children_count} onChange={set("children_count")} /></Field>
+          <Field label="Contact"><input className="inp" value={f.phone} onChange={set("phone")} /></Field>
+          <Field label="Contact urgent"><input className="inp" value={f.emergency_contact} onChange={set("emergency_contact")} /></Field>
+        </div>
+        <Field label="Adresse"><input className="inp" value={f.address} onChange={set("address")} /></Field>
+        <h3 className="mb-2 mt-2">Contrat</h3>
+        <div className="grid gap-x-3 sm:grid-cols-3">
+          <Field label="Date de rentrée"><input type="date" className="inp" value={f.hire_date} onChange={set("hire_date")} /></Field>
+          <Field label="Date de validation"><input type="date" className="inp" value={f.validation_date} onChange={set("validation_date")} /></Field>
+          <Field label="Contrat">{yn("contract_signed", "Oui", "Pas encore")}</Field>
+        </div>
+        <h3 className="mb-2 mt-2">CNSS & banque</h3>
+        <div className="grid gap-x-3 sm:grid-cols-3">
+          <Field label="N° CNSS"><input className="inp" value={f.cnss_number} onChange={set("cnss_number")} /></Field>
+          <Field label="CNSS déclarée">{yn("cnss_declared", "Oui", "Non")}</Field>
+          <Field label="RIB"><input className="inp" value={f.rib} onChange={set("rib")} /></Field>
+        </div>
+        <Field label="Banque">{ro ? <input className="inp" value={f.bank_name || "—"} readOnly /> : <BankSelect value={f.bank_name} onChange={(v) => setF({ ...f, bank_name: v })} />}</Field>
+      </fieldset>
+      <div className="mt-2 flex justify-end gap-2">
+        <button className="btn" onClick={onClose}>{ro ? "Fermer" : "Annuler"}</button>
+        {canEdit && <button className="btn-pri" disabled={busy || !f.first_name.trim() || !f.last_name.trim()} onClick={() => run(async () => {
+          must(await supabase.rpc("admin_update_fiche", { p_profile: id, p: f }));
+          onDone();
+        }, "Fiche enregistrée")}>Enregistrer</button>}
+      </div>
     </Modal>
   );
 }
