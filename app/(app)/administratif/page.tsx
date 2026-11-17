@@ -181,9 +181,22 @@ const AGENT_VIDE = {
 /** Nouvel agent : seuls prénom et nom sont obligatoires. Placé dans la section Agents. */
 function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [a, setA] = useState(AGENT_VIDE);
+  const [cree, setCree] = useState<{ username: string; password: string } | null>(null);
   const { busy, run } = useAction();
   const set = (k: keyof typeof AGENT_VIDE) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setA({ ...a, [k]: e.target.value });
   const ok = a.first_name.trim() !== "" && a.last_name.trim() !== "";
+  if (cree)
+    return (
+      <Modal title="Agent ajouté" onClose={onDone}>
+        <p className="mb-3">Accès au site créé. À transmettre à l&apos;agent :</p>
+        <div className="card mb-3 grid gap-1 text-[14px]">
+          <div>Identifiant : <b className="font-mono">{cree.username}</b></div>
+          <div>Mot de passe : <b className="font-mono">{cree.password}</b></div>
+        </div>
+        <p className="mut mb-3 text-[12.5px]">À sa première connexion, le site lui demandera de choisir son propre mot de passe.</p>
+        <div className="flex justify-end"><button className="btn-pri" onClick={onDone}>OK</button></div>
+      </Modal>
+    );
   return (
     <Modal title="Ajouter un agent" onClose={onClose} wide>
       <div className="grid gap-x-3 sm:grid-cols-3">
@@ -207,10 +220,10 @@ function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
         <Field label="RIB (facultatif)"><input className="inp" value={a.rib} onChange={set("rib")} /></Field>
       </div>
       <Field label="Banque (facultatif)"><BankSelect value={a.bank_name} onChange={(v) => setA({ ...a, bank_name: v })} /></Field>
-      <p className="mut mb-3 text-[12.5px]">L&apos;agent est ajouté dans la section Agents. Pour lui ouvrir un accès au site, utilisez Utilisateurs &amp; rôles.</p>
+      <p className="mut mb-3 text-[12.5px]">L&apos;agent est ajouté dans la section Agents, avec son accès au site : identifiant = son nom, mot de passe par défaut notioncall123 (à changer à la première connexion).</p>
       <div className="flex justify-end"><button className="btn-pri" disabled={busy || !ok} onClick={() => run(async () => {
-        must(await supabase.rpc("admin_add_agent", { p: a }));
-        onDone();
+        const r = must(await supabase.rpc("admin_add_agent", { p: a })) as { username: string; password: string };
+        setCree(r);
       }, "Agent ajouté")}>Ajouter l&apos;agent</button></div>
     </Modal>
   );
