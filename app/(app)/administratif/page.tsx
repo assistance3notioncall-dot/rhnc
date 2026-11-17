@@ -68,7 +68,9 @@ export default function Administratif() {
   const shown = byStatus
     .filter((l) => fGroup === "tous" || l.g === fGroup)
     .filter((l) => !needle || [fullName(l), l.cin, l.phone, l.matricule].some((v) => (v ?? "").toLowerCase().includes(needle)))
+    // Dans chaque section : contrat « Oui » en haut, « Pas encore » en bas (re-trié dès qu'on change le contrat)
     .sort((a, b) => groupRank(a.g) - groupRank(b.g)
+      || Number(!!b.contract_signed) - Number(!!a.contract_signed)
       || (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)
       || fullName(a).localeCompare(fullName(b)));
   const count = (g: string) => byStatus.filter((l) => l.g === g).length;
