@@ -103,9 +103,9 @@ export default function Administratif() {
             <thead>
               <tr className="[&_th]:text-[11px]">
                 <th className="sticky left-0 z-20 bg-[#fafbfd]">Salarié</th>
-                <th>Statut</th><th>CIN</th><th>Adresse</th><th>Date de naissance</th><th>Contact</th><th>Contact urgent</th>
+                <th>Statut</th><th /><th>CIN</th><th>Adresse</th><th>Date de naissance</th><th>Contact</th><th>Contact urgent</th>
                 <th className="bg-[#f0f9ff]">CNSS</th><th className="bg-[#f0f9ff]">RIB</th><th className="bg-[#f0f9ff]">Banque</th>
-                <th>Date de rentrée</th><th>Date de validation</th><th>Contrat</th><th>CNSS</th><th />
+                <th>Date de rentrée</th><th>Date de validation</th><th>Contrat</th><th>CNSS</th>
               </tr>
             </thead>
             <tbody>{shown.map((l, i) => {
@@ -127,6 +127,7 @@ export default function Administratif() {
                       {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </td>
+                  <td><button className="btn btn-sm" onClick={() => setEdit(l)}>Fiche</button></td>
                   {cell(l.cin, "font-mono text-[12px]")}
                   <td className="max-w-[240px] truncate" title={l.address ?? ""}>{l.address || <span className="text-mut">—</span>}</td>
                   {cell(l.birth_date ? dfr(l.birth_date) : null)}
@@ -147,7 +148,6 @@ export default function Administratif() {
                       <option value="oui">Oui</option><option value="non">Non</option>
                     </select>
                   </td>
-                  <td className="text-right"><button className="btn btn-sm" onClick={() => setEdit(l)}>Fiche</button></td>
                 </tr>
               </Fragment>);
             })}</tbody>
