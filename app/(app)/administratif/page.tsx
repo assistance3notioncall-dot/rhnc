@@ -5,6 +5,7 @@ import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
 import { Empty, Field, Modal, PageHead, Tabs, useAction } from "@/components/ui";
 import { dfr, downloadCSV, fullName } from "@/lib/format";
+import { BankSelect } from "@/components/BankSelect";
 
 // Onglet « Suivi Administratif » : informations administratives du personnel (ex-feuille Notion Workforce).
 // Accès réglé par rôle dans Utilisateurs & rôles : « voir » = consulter, « modifier » = changer statut, contrat, banque.
@@ -34,6 +35,7 @@ export default function Administratif() {
   const [fStatus, setFStatus] = useState("actifs");
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<Line | null>(null);
+  const [adding, setAdding] = useState(false);
   const { busy, run } = useAction();
   const setStatus = (l: Line, v: string) => {
     if (v === simple(l.status)) return;
@@ -87,6 +89,7 @@ export default function Administratif() {
           <option value="actifs">Actifs</option><option value="inactifs">Inactifs</option><option value="tous">Tous</option>
         </select>
         <button className="btn" disabled={!shown.length} onClick={exportCSV}>Exporter (CSV)</button>
+        {canEdit && <button className="btn-pri" onClick={() => setAdding(true)}>+ Ajouter un agent</button>}
       </PageHead>
       {loaded && lines.length > 0 && (
         <Tabs value={fGroup} onChange={setFGroup} tabs={[{ key: "tous", label: `Tous (${byStatus.length})` },
@@ -149,6 +152,7 @@ export default function Administratif() {
         )}
       </div>
       {edit && <EditModal line={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {adding && <AddAgentModal onClose={() => setAdding(false)} onDone={() => { setAdding(false); setFGroup("agents"); load(); }} />}
     </Guard>
   );
 }
@@ -164,6 +168,50 @@ function EditModal({ line, onClose, onDone }: { line: Line; onClose: () => void;
         must(await supabase.rpc("set_admin_info", { p_profile: line.id, p_bank: bank, p_contract_signed: !!line.contract_signed }));
         onDone();
       }, "Enregistré")}>Enregistrer</button></div>
+    </Modal>
+  );
+}
+
+const AGENT_ROLES: [string, string][] = [["brute", "Agent brute"], ["qualif", "Agent qualif"], ["soustraitant_d", "Soustraitant D"], ["soustraitan_s", "SousTraitan S"]];
+const AGENT_VIDE = {
+  first_name: "", last_name: "", role_key: "brute", phone: "", emergency_contact: "", birth_date: "", hire_date: "",
+  cin: "", address: "", cnss_number: "", rib: "", bank_name: "", contract_signed: false, cnss_declared: false,
+};
+
+/** Nouvel agent : seuls prénom et nom sont obligatoires. Placé dans la section Agents. */
+function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [a, setA] = useState(AGENT_VIDE);
+  const { busy, run } = useAction();
+  const set = (k: keyof typeof AGENT_VIDE) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setA({ ...a, [k]: e.target.value });
+  const ok = a.first_name.trim() !== "" && a.last_name.trim() !== "";
+  return (
+    <Modal title="Ajouter un agent" onClose={onClose} wide>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="Prénom *"><input className="inp" value={a.first_name} onChange={set("first_name")} /></Field>
+        <Field label="Nom *"><input className="inp" value={a.last_name} onChange={set("last_name")} /></Field>
+        <Field label="Rôle"><select className="inp" value={a.role_key} onChange={set("role_key")}>
+          {AGENT_ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+        <Field label="Contact"><input className="inp" placeholder="06…" value={a.phone} onChange={set("phone")} /></Field>
+        <Field label="Contact urgent"><input className="inp" placeholder="06…" value={a.emergency_contact} onChange={set("emergency_contact")} /></Field>
+        <Field label="Date de naissance"><input type="date" className="inp" value={a.birth_date} onChange={set("birth_date")} /></Field>
+        <Field label="Date de rentrée"><input type="date" className="inp" value={a.hire_date} onChange={set("hire_date")} /></Field>
+        <Field label="CIN (facultatif)"><input className="inp" value={a.cin} onChange={set("cin")} /></Field>
+        <Field label="Contrat"><select className="inp" value={a.contract_signed ? "oui" : "non"} onChange={(e) => setA({ ...a, contract_signed: e.target.value === "oui" })}>
+          <option value="non">Pas encore</option><option value="oui">Oui</option></select></Field>
+      </div>
+      <Field label="Adresse (facultatif)"><input className="inp" value={a.address} onChange={set("address")} /></Field>
+      <div className="grid gap-x-3 sm:grid-cols-3">
+        <Field label="N° CNSS (facultatif)"><input className="inp" value={a.cnss_number} onChange={set("cnss_number")} /></Field>
+        <Field label="CNSS déclarée"><select className="inp" value={a.cnss_declared ? "oui" : "non"} onChange={(e) => setA({ ...a, cnss_declared: e.target.value === "oui" })}>
+          <option value="non">Non</option><option value="oui">Oui</option></select></Field>
+        <Field label="RIB (facultatif)"><input className="inp" value={a.rib} onChange={set("rib")} /></Field>
+      </div>
+      <Field label="Banque (facultatif)"><BankSelect value={a.bank_name} onChange={(v) => setA({ ...a, bank_name: v })} /></Field>
+      <p className="mut mb-3 text-[12.5px]">L&apos;agent est ajouté dans la section Agents. Pour lui ouvrir un accès au site, utilisez Utilisateurs &amp; rôles.</p>
+      <div className="flex justify-end"><button className="btn-pri" disabled={busy || !ok} onClick={() => run(async () => {
+        must(await supabase.rpc("admin_add_agent", { p: a }));
+        onDone();
+      }, "Agent ajouté")}>Ajouter l&apos;agent</button></div>
     </Modal>
   );
 }
