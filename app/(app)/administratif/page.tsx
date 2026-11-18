@@ -4,8 +4,9 @@ import { supabase, must } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Guard } from "@/components/Guard";
 import { Empty, Field, Modal, PageHead, Tabs, useAction } from "@/components/ui";
-import { dfr, downloadCSV, fullName } from "@/lib/format";
+import { dfr, dh, downloadCSV, fullName } from "@/lib/format";
 import { BankSelect } from "@/components/BankSelect";
+import { FicheModal as FicheSalarie, type Row as SalRow, type Role, type Dept } from "@/components/FicheSalarie";
 
 // Onglet « Suivi Administratif » : informations administratives du personnel (ex-feuille Notion Workforce).
 // Accès réglé par rôle dans Utilisateurs & rôles : « voir » = consulter, « modifier » = changer statut, contrat, banque.
@@ -26,7 +27,7 @@ type Row = {
 type Line = Row & { g: string; cnss: string | null; rib: string | null; bank: string | null; cnssOk: boolean };
 
 export default function Administratif() {
-  const { can } = useSession();
+  const { can, isSuper } = useSession();
   const canView = can("administratif");
   const canEdit = can("administratif", true);
   const [lines, setLines] = useState<Line[]>([]);
@@ -36,6 +37,9 @@ export default function Administratif() {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<Line | null>(null);
   const [adding, setAdding] = useState(false);
+  // Super admin : fiche complète de Salariés (avec salaire) pour voir / ajouter tout le monde
+  const [ref, setRef] = useState<{ roles: Role[]; depts: Dept[]; people: SalRow[]; salaries: Record<string, number | null> }>({ roles: [], depts: [], people: [], salaries: {} });
+  const [cree, setCree] = useState<{ name: string; username: string; password: string } | null>(null);
   const { busy, run } = useAction();
   const setStatus = (l: Line, v: string) => {
     if (v === simple(l.status)) return;
@@ -53,6 +57,18 @@ export default function Administratif() {
     must(await supabase.rpc("set_admin_cnss", { p_profile: l.id, p_declared: v }));
     setLines((x) => x.map((y) => (y.id === l.id ? { ...y, cnssOk: v } : y)));
   }, "CNSS enregistrée");
+
+  const loadRef = useCallback(async () => {
+    const [{ data: ro }, { data: d }, { data: pe }, { data: sa }] = await Promise.all([
+      supabase.from("app_roles").select("key,label,kind,locked,color").order("label"),
+      supabase.from("departments").select("id,name").order("name"),
+      supabase.from("employees_access").select("*").order("matricule"),
+      supabase.rpc("visible_base_salaries"),
+    ]);
+    const sal = Object.fromEntries((((sa as { profile_id: string; base_salary: number | null }[]) ?? [])).map((x) => [x.profile_id, x.base_salary == null ? null : Number(x.base_salary)]));
+    setRef({ roles: (ro as Role[]) ?? [], depts: (d as Dept[]) ?? [], people: (pe as SalRow[]) ?? [], salaries: sal });
+  }, []);
+  useEffect(() => { if (isSuper) loadRef(); }, [isSuper, loadRef]);
 
   const load = useCallback(async () => {
     // Fonction en base : vérifie le droit « voir » et exclut les comptes hors effectif
@@ -91,7 +107,7 @@ export default function Administratif() {
           <option value="actifs">Actifs</option><option value="inactifs">Inactifs</option><option value="tous">Tous</option>
         </select>
         <button className="btn" disabled={!shown.length} onClick={exportCSV}>Exporter (CSV)</button>
-        {canEdit && <button className="btn-pri" onClick={() => setAdding(true)}>+ Ajouter un agent</button>}
+        {canEdit && <button className="btn-pri" onClick={() => setAdding(true)}>{isSuper ? "+ Ajouter" : "+ Ajouter un agent"}</button>}
       </PageHead>
       {loaded && lines.length > 0 && (
         <Tabs value={fGroup} onChange={setFGroup} tabs={[{ key: "tous", label: `Tous (${byStatus.length})` },
@@ -103,9 +119,7 @@ export default function Administratif() {
             <thead>
               <tr className="[&_th]:text-[11px]">
                 <th className="sticky left-0 z-20 bg-[#fafbfd]">Salarié</th>
-                <th>Statut</th><th /><th>CIN</th><th>Adresse</th><th>Date de naissance</th><th>Contact</th><th>Contact urgent</th>
-                <th className="bg-[#f0f9ff]">CNSS</th><th className="bg-[#f0f9ff]">RIB</th><th className="bg-[#f0f9ff]">Banque</th>
-                <th>Date de rentrée</th><th>Date de validation</th><th>Contrat</th><th>CNSS</th>
+                <th>Statut</th><th /><th>Date de rentrée</th><th>Date de validation</th><th>Contrat</th><th>CNSS</th>
               </tr>
             </thead>
             <tbody>{shown.map((l, i) => {
@@ -113,7 +127,7 @@ export default function Administratif() {
               return (<Fragment key={l.id}>
                 {head && (
                   <tr className="bg-gray2-l text-[12px]">
-                    <td colSpan={15} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
+                    <td colSpan={7} className="sticky left-0 z-[1] bg-gray2-l py-1.5 font-bold uppercase tracking-wide text-pri-d">
                       {groupLabel(l.g)} <span className="mut font-normal normal-case">· {shown.filter((x) => x.g === l.g).length}</span>
                     </td>
                   </tr>)}
@@ -128,14 +142,6 @@ export default function Administratif() {
                     </select>
                   </td>
                   <td><button className="btn btn-sm" onClick={() => setEdit(l)}>Fiche</button></td>
-                  {cell(l.cin, "font-mono text-[12px]")}
-                  <td className="max-w-[240px] truncate" title={l.address ?? ""}>{l.address || <span className="text-mut">—</span>}</td>
-                  {cell(l.birth_date ? dfr(l.birth_date) : null)}
-                  {cell(l.phone)}
-                  {cell(l.emergency_contact)}
-                  {cell(l.cnss, "bg-[#f0f9ff] font-mono text-[12px]")}
-                  {cell(l.rib, "bg-[#f0f9ff] font-mono text-[12px]")}
-                  {cell(l.bank, "bg-[#f0f9ff]")}
                   {cell(l.hire_date ? dfr(l.hire_date) : null)}
                   {cell(l.validation_date ? dfr(l.validation_date) : null)}
                   <td>
@@ -154,8 +160,34 @@ export default function Administratif() {
           </table>
         )}
       </div>
-      {edit && <FicheModal id={edit.id} canEdit={canEdit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
-      {adding && <AddAgentModal onClose={() => setAdding(false)} onDone={() => { setAdding(false); setFGroup("agents"); load(); }} />}
+      {edit && (isSuper
+        ? <FicheSalarie id={edit.id} salary={ref.salaries[edit.id] != null ? dh(ref.salaries[edit.id] as number) : "—"} roles={ref.roles} depts={ref.depts} people={ref.people}
+            onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); loadRef(); }} />
+        : <AdminFicheModal id={edit.id} canEdit={canEdit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />)}
+      {adding && (isSuper
+        ? <FicheSalarie id={null} salary={null} roles={ref.roles} depts={ref.depts} people={ref.people} onClose={() => setAdding(false)}
+            onDone={(newId) => {
+              setAdding(false);
+              if (!newId) { load(); return; }
+              // Accès créé tout de suite : identifiant = nom, mot de passe notioncall123
+              run(async () => {
+                const r = must(await supabase.rpc("admin_create_default_access", { p_profile: newId })) as { username: string; password: string };
+                const p = must(await supabase.from("profiles").select("first_name,last_name").eq("id", newId).single()) as { first_name: string; last_name: string };
+                setCree({ name: `${p.first_name} ${p.last_name}`, ...r });
+                await load(); await loadRef();
+              }, "Fiche et accès créés");
+            }} />
+        : <AddAgentModal onClose={() => setAdding(false)} onDone={() => { setAdding(false); setFGroup("agents"); load(); }} />)}
+      {cree && (
+        <Modal title="Fiche et accès créés" onClose={() => setCree(null)}>
+          <p className="mb-3">{cree.name} peut se connecter avec :</p>
+          <div className="card mb-3 grid gap-1 text-[14px]">
+            <div>Identifiant : <b className="font-mono">{cree.username}</b></div>
+            <div>Mot de passe : <b className="font-mono">{cree.password}</b></div>
+          </div>
+          <p className="mut mb-3 text-[12.5px]">Il peut garder ce mot de passe ou le changer depuis son profil.</p>
+          <div className="flex justify-end"><button className="btn-pri" onClick={() => setCree(null)}>OK</button></div>
+        </Modal>)}
     </Guard>
   );
 }
@@ -182,7 +214,7 @@ function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
           <div>Identifiant : <b className="font-mono">{cree.username}</b></div>
           <div>Mot de passe : <b className="font-mono">{cree.password}</b></div>
         </div>
-        <p className="mut mb-3 text-[12.5px]">À sa première connexion, le site lui demandera de choisir son propre mot de passe.</p>
+        <p className="mut mb-3 text-[12.5px]">Il peut garder ce mot de passe ou le changer depuis son profil.</p>
         <div className="flex justify-end"><button className="btn-pri" onClick={onDone}>OK</button></div>
       </Modal>
     );
@@ -213,7 +245,7 @@ function AddAgentModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
         <Field label="RIB (facultatif)"><input className="inp" value={a.rib} onChange={set("rib")} /></Field>
       </div>
       <Field label="Banque (facultatif)"><BankSelect value={a.bank_name} onChange={(v) => setA({ ...a, bank_name: v })} /></Field>
-      <p className="mut mb-3 text-[12.5px]">L&apos;agent est ajouté dans la section Agents, avec son accès au site : identifiant = son nom, mot de passe par défaut notioncall123 (à changer à la première connexion).</p>
+      <p className="mut mb-3 text-[12.5px]">L&apos;agent est ajouté dans la section Agents, avec son accès au site : identifiant = son nom, mot de passe par défaut notioncall123.</p>
       <div className="flex justify-end"><button className="btn-pri" disabled={busy || !ok} onClick={() => run(async () => {
         const r = must(await supabase.rpc("admin_add_agent", { p: a })) as { username: string; password: string };
         setCree(r);
@@ -230,7 +262,7 @@ type Fiche = {
 };
 
 /** Fiche administrative (sans salaire ni paie). Lecture seule sans le droit « modifier ». */
-function FicheModal({ id, canEdit, onClose, onDone }: { id: string; canEdit: boolean; onClose: () => void; onDone: () => void }) {
+function AdminFicheModal({ id, canEdit, onClose, onDone }: { id: string; canEdit: boolean; onClose: () => void; onDone: () => void }) {
   const [f, setF] = useState<Fiche | null>(null);
   const [err, setErr] = useState("");
   const { busy, run } = useAction();
