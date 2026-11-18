@@ -10,6 +10,8 @@ import type { RequestRow } from "@/lib/types";
 
 type LeaveType = { id: string; code: string; label: string; requires_attachment: boolean; deducts_balance: boolean; default_days: number | null };
 type Template = { id: string; name: string };
+// Statuts d'une avance : à confirmer par l'administration → confirmée (à remettre) → prise (retenue sur la paie)
+const ADV_LABEL: Record<string, string> = { envoyee: "À confirmer", valid_mgr: "À confirmer", valid_rh: "Confirmée · à recevoir", traitee: "Prise" };
 type Event = { id: number; action: string; comment: string | null; created_at: string; to_status: string | null };
 
 function DemandesInner() {
@@ -70,12 +72,16 @@ function DemandesInner() {
                     {r.kind === "reclamation" && r.category}
                   </td>
                   <td className="mut">{dtfr(r.submitted_at ?? r.created_at)}</td>
-                  <td><Badge status={r.status} /></td>
+                  <td><Badge status={r.status} label={r.kind === "avance" ? ADV_LABEL[r.status] : undefined} /></td>
                   <td className="text-right" onClick={(e) => e.stopPropagation()}>
                     {r.status === "brouillon" && (
                       <button className="btn btn-sm" disabled={busy} onClick={() => run(async () => { must(await supabase.rpc("submit_request", { p_id: r.id })); await load(); }, "Demande envoyée")}>Envoyer</button>
                     )}
-                    {["brouillon", "envoyee", "valid_mgr", "valid_rh"].includes(r.status) && (
+                    {r.kind === "avance" && r.status === "valid_rh" && (
+                      <button className="btn-ok btn-sm" disabled={busy} title="À cliquer quand vous avez reçu l'argent : l'avance sera retenue sur votre paie du mois"
+                        onClick={() => confirm(`Confirmez-vous avoir reçu l'avance de ${dh(r.amount)} ?`) && run(async () => { must(await supabase.rpc("complete_request", { p_id: r.id })); await load(); }, "Avance marquée prise")}>J&apos;ai reçu l&apos;avance</button>
+                    )}
+                    {["brouillon", "envoyee", "valid_mgr", "valid_rh"].includes(r.status) && (r as { category?: string | null }).category !== "saisie_rh" && (
                       <button className="btn-no btn-sm ml-1" disabled={busy} onClick={() => confirm("Annuler cette demande ?") && run(async () => { must(await supabase.rpc("cancel_request", { p_id: r.id })); await load(); }, "Demande annulée")}>Annuler</button>
                     )}
                   </td>
