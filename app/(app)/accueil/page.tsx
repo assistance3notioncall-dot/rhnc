@@ -21,21 +21,24 @@ export default function Accueil() {
   useEffect(() => {
     if (!me) return;
     const today = ymd(new Date());
+    // Toutes les requêtes de l'accueil partent en même temps (au lieu de l'une après l'autre)
     (async () => {
-      const { data: lt } = await supabase.from("leave_types").select("id").eq("code", "CONGE_ANNUEL").maybeSingle();
-      if (lt) {
-        const { data } = await supabase.rpc("balance_of", { p_profile: me.id, p_leave_type: lt.id });
+      const [ltRes, rRes, aRes, hRes, sRes] = await Promise.all([
+        supabase.from("leave_types").select("id").eq("code", "CONGE_ANNUEL").maybeSingle(),
+        supabase.from("requests").select("*").eq("profile_id", me.id).order("created_at", { ascending: false }).limit(5),
+        supabase.from("team_absences").select("*").lte("start_date", today).gte("end_date", today),
+        supabase.from("holidays").select("day,label").gte("day", today).order("day").limit(1).maybeSingle(),
+        can("mesrdv")
+          ? supabase.from("stats_agent_month").select("rdv,challenge,rang").eq("profile_id", me.id).eq("month", monthStart()).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      setReqs((rRes.data as RequestRow[]) ?? []);
+      setAbsToday((aRes.data as Abs[]) ?? []);
+      setHoliday(hRes.data);
+      setRdv(sRes.data as { rdv: number; challenge: number; rang: number } | null);
+      if (ltRes.data) {
+        const { data } = await supabase.rpc("balance_of", { p_profile: me.id, p_leave_type: ltRes.data.id });
         setSolde(Number(data ?? 0));
-      }
-      const { data: r } = await supabase.from("requests").select("*").eq("profile_id", me.id).order("created_at", { ascending: false }).limit(5);
-      setReqs((r as RequestRow[]) ?? []);
-      const { data: a } = await supabase.from("team_absences").select("*").lte("start_date", today).gte("end_date", today);
-      setAbsToday((a as Abs[]) ?? []);
-      const { data: h } = await supabase.from("holidays").select("day,label").gte("day", today).order("day").limit(1).maybeSingle();
-      setHoliday(h);
-      if (can("mesrdv")) {
-        const { data: s } = await supabase.from("stats_agent_month").select("rdv,challenge,rang").eq("profile_id", me.id).eq("month", monthStart()).maybeSingle();
-        setRdv(s);
       }
     })();
   }, [me, can]);

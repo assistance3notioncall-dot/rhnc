@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { Access, Profile } from "./types";
@@ -34,6 +34,19 @@ function needsPasswordChange(session: Session | null): boolean {
   return !!session.user.user_metadata?.must_change_password;
 }
 
+/**
+ * Cache local du profil et des droits (navigateur de l'utilisateur) : au rechargement,
+ * l'interface s'affiche tout de suite avec la dernière version connue, puis se met à jour.
+ */
+const CACHE_KEY = "rh360.session.v1";
+type Cache = { uid: string; me: Profile; access: Access[]; roleLabel: string };
+function readCache(uid: string): Cache | null {
+  try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null") as Cache | null; return c && c.uid === uid ? c : null; } catch { return null; }
+}
+function writeCache(c: Cache | null) {
+  try { if (c) localStorage.setItem(CACHE_KEY, JSON.stringify(c)); else localStorage.removeItem(CACHE_KEY); } catch { /* stockage indisponible */ }
+}
+
 /** Profil + droits en une passe. Remonte l'erreur au lieu de la jeter. */
 async function chargerProfil(userId: string) {
   const [profil, droits] = await Promise.all([
@@ -57,7 +70,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const load = useCallback(async (s: Session | null) => {
     setSession(s);
-    if (!s) { setMe(null); setAccess([]); setRoleLabel(""); setError(null); setReady(true); return; }
+    if (!s) { setMe(null); setAccess([]); setRoleLabel(""); setError(null); writeCache(null); setReady(true); return; }
+
+    // Affichage immédiat depuis le cache, la vérification réseau suit en arrière-plan
+    const cached = readCache(s.user.id);
+    if (cached) { setMe(cached.me); setAccess(cached.access); setRoleLabel(cached.roleLabel); setError(null); setReady(true); }
 
     // Le jeton relu depuis localStorage peut déjà être expiré. On rafraîchit
     // AVANT d'interroger : sinon les deux requêtes partent en 401 et polluent
@@ -78,7 +95,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (errRefresh || !frais.session) {
         // Session morte : on sort plutôt que de laisser l'utilisateur sur un
         // menu vide. Le SIGNED_OUT qui suit rappelle load(null).
-        setMe(null); setAccess([]); setRoleLabel(""); setError(null); setReady(true);
+        setMe(null); setAccess([]); setRoleLabel(""); setError(null); writeCache(null); setReady(true);
         await supabase.auth.signOut();
         return;
       }
@@ -96,15 +113,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
 
     setError(null);
+    const acc = res.access.filter((a) => a.can_view);
     setMe(res.me);
-    setAccess(res.access.filter((a) => a.can_view));
+    setAccess(acc);
+    setReady(true); // le libellé du rôle n'est qu'un affichage : il ne bloque plus l'ouverture
+    let label = "";
     if (res.me?.role_key) {
       const { data: role } = await supabase.from("app_roles").select("label").eq("key", res.me.role_key).maybeSingle();
-      setRoleLabel(role?.label ?? res.me.role_key);
-    } else {
-      setRoleLabel("");
+      label = role?.label ?? res.me.role_key;
     }
-    setReady(true);
+    setRoleLabel(label);
+    if (res.me) writeCache({ uid: res.me.id, me: res.me, access: acc, roleLabel: label });
   }, []);
 
   useEffect(() => {
@@ -122,13 +141,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [access],
   );
 
-  const value: Ctx = {
+  const value: Ctx = useMemo(() => ({
     ready, session, me, roleLabel, access, can, error,
     isSuper: me?.role_key === "super_admin",
     mustChangePassword: needsPasswordChange(session),
     reload: async () => { const { data } = await supabase.auth.getSession(); await load(data.session); },
-    signOut: async () => { await supabase.auth.signOut(); },
-  };
+    signOut: async () => { writeCache(null); await supabase.auth.signOut(); },
+  }), [ready, session, me, roleLabel, access, can, error, load]);
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;
 }
 

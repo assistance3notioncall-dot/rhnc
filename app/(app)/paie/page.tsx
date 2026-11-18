@@ -103,18 +103,19 @@ export default function Paie() {
     const onFocus = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", onFocus);
     window.addEventListener("focus", onFocus);
-    const poll = setInterval(onFocus, 30000);
+    const poll = setInterval(onFocus, 120000); // filet de sécurité ; le temps réel fait l'essentiel
     return () => { clearTimeout(t); clearInterval(poll); supabase.removeChannel(ch); document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("focus", onFocus); };
   }, [cur, loadPeriod]);
   // Le bulletin ouvert suit le dernier calcul (un recalcul crée un nouveau bulletin pour le même salarié)
   const liveView = view ? slips.find((x) => x.profile_id === view.profile_id) ?? view : null;
   useEffect(() => { setDays(cur?.working_days != null ? String(cur.working_days) : ""); }, [cur]);
 
-  const name = (id: string) => fullName(people.find((p) => p.id === id));
+  const peopleById = new Map(people.map((p) => [p.id, p]));
+  const name = (id: string) => fullName(peopleById.get(id));
   const open = cur && ["ouverte", "calculee"].includes(cur.status);
   const sum = (k: keyof Slip) => slips.reduce((a, s) => a + Number(s[k] ?? 0), 0);
   // Staff (salaire fixe) d'abord, puis agents RDV du net le plus haut au plus bas — même ordre que sort_rank en base.
-  const grp = (id: string) => people.find((p) => p.id === id)?.groupe ?? null;
+  const grp = (id: string) => peopleById.get(id)?.groupe ?? null;
   const ordered = [...slips].filter((s) => fGroup === "tous" || grp(s.profile_id) === fGroup).sort((a, b) =>
     groupRank(grp(a.profile_id)) - groupRank(grp(b.profile_id))
     || (a.sort_rank ?? Infinity) - (b.sort_rank ?? Infinity)
