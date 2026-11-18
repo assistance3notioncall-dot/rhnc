@@ -14,7 +14,6 @@ import { FicheModal as FicheSalarie, type Row as SalRow, type Role, type Dept } 
 const GROUPS: [string, string][] = [["direction", "Direction"], ["back_office", "Back office"], ["agents", "Agents"], ["extra", "Entretien & logistique"]];
 const groupRank = (g: string) => { const i = GROUPS.findIndex(([k]) => k === g); return i < 0 ? GROUPS.length : i; };
 const groupLabel = (g: string) => GROUPS.find(([k]) => k === g)?.[1] ?? "Sans groupe";
-const STATUS_RANK: Record<string, number> = { actif: 0, suspendu: 1, inactif: 2, sorti: 3 };
 // Deux choix seulement : Actif / Inactif (suspendu et sorti en base s'affichent « Inactif »)
 const STATUS_LABEL: Record<string, string> = { actif: "Actif", inactif: "Inactif" };
 const simple = (s: string) => (s === "actif" ? "actif" : "inactif");
@@ -33,7 +32,7 @@ export default function Administratif() {
   const [lines, setLines] = useState<Line[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [fGroup, setFGroup] = useState("tous");
-  const [fStatus, setFStatus] = useState("actifs");
+  const [fStatus, setFStatus] = useState("tous");
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<Line | null>(null);
   const [adding, setAdding] = useState(false);
@@ -84,10 +83,11 @@ export default function Administratif() {
   const shown = byStatus
     .filter((l) => fGroup === "tous" || l.g === fGroup)
     .filter((l) => !needle || [fullName(l), l.cin, l.phone, l.matricule].some((v) => (v ?? "").toLowerCase().includes(needle)))
-    // Dans chaque section : contrat « Oui » en haut, « Pas encore » en bas (re-trié dès qu'on change le contrat)
+    // Dans chaque section : Actif + Oui, Actif + Pas encore, Inactif + Oui, Inactif + Pas encore, puis nom
+    // (re-trié dès qu'on change le statut ou le contrat)
     .sort((a, b) => groupRank(a.g) - groupRank(b.g)
+      || Number(b.status === "actif") - Number(a.status === "actif")
       || Number(!!b.contract_signed) - Number(!!a.contract_signed)
-      || (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)
       || fullName(a).localeCompare(fullName(b)));
   const count = (g: string) => byStatus.filter((l) => l.g === g).length;
 
@@ -104,7 +104,7 @@ export default function Administratif() {
       <PageHead title="Suivi Administratif" sub="Informations administratives du personnel : identité, coordonnées, CNSS, banque et contrat.">
         <input className="inp w-56" placeholder="Rechercher (nom, CIN, tél.)" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="inp w-auto" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="actifs">Actifs</option><option value="inactifs">Inactifs</option><option value="tous">Tous</option>
+          <option value="tous">Tous</option><option value="actifs">Actifs</option><option value="inactifs">Inactifs</option>
         </select>
         <button className="btn" disabled={!shown.length} onClick={exportCSV}>Exporter (CSV)</button>
         {canEdit && <button className="btn-pri" onClick={() => setAdding(true)}>{isSuper ? "+ Ajouter" : "+ Ajouter un agent"}</button>}
