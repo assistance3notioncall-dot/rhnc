@@ -10,11 +10,11 @@ import { dtfr, fullName, initials } from "@/lib/format";
 
 const ICON: Record<string, string> = {
   accueil: "⌂", demandes: "✎", calendrier: "▦", documents: "▤", mesrdv: "★", profil: "◉",
-  validations: "✓", pointage: "⏱", salaries: "☰", stats: "▲", paie: "₪", administratif: "▣", rapports: "◧", parametres: "⚙", admin: "⛨",
+  validations: "✓", pointage: "⏱", salaries: "☰", stats: "▲", paie: "₪", avances: "💵", administratif: "▣", rapports: "◧", parametres: "⚙", admin: "⛨",
 };
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: "Mon espace", keys: ["accueil", "demandes", "calendrier", "documents", "mesrdv", "profil"] },
-  { title: "Gestion", keys: ["validations", "pointage", "salaries", "stats", "paie", "administratif", "rapports"] },
+  { title: "Gestion", keys: ["validations", "pointage", "salaries", "stats", "paie", "avances", "administratif", "rapports"] },
   { title: "Administration", keys: ["parametres", "admin"] },
 ];
 type Notif = { id: number; title: string; body: string | null; link: string | null; read_at: string | null; created_at: string };
@@ -100,10 +100,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <span className="ml-auto rounded-full bg-err px-1.5 text-[11px] font-semibold text-white">{pending}</span>
                   )}
                 </Link>
-                {a!.module_key === "paie" && (a!.can_edit || me.role_key === "super_admin") && (
-                  <a href="/paie?tab=avances"
-                    className="mb-0.5 ml-7 flex items-center gap-2 rounded-[9px] px-3 py-1.5 text-[13px] font-medium text-gray2 hover:bg-gray2-l">💵 Avances</a>
-                )}
               </Fragment>);
             })}
           </div>
