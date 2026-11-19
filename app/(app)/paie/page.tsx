@@ -67,6 +67,8 @@ export default function Paie() {
   const [slips, setSlips] = useState<Slip[]>([]);
   const [inputs, setInputs] = useState<Input[]>([]);
   const [tab, setTab] = useState("bulletins");
+  // lien direct « /paie?tab=avances » (menu)
+  useEffect(() => { try { const t = new URLSearchParams(window.location.search).get("tab"); if (t) setTab(t); } catch { /* */ } }, []);
   const [view, setView] = useState<Slip | null>(null);
   const [addInput, setAddInput] = useState(false);
   const [newMonth, setNewMonth] = useState(monthStart().slice(0, 7));

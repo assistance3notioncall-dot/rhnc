@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Logo } from "@/components/Logo";
@@ -91,8 +91,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="px-3 pb-1.5 pt-3 text-[11px] uppercase tracking-wider text-mut">{g.title}</div>
             {items.map((a) => {
               const on = path === "/" + a!.module_key || path.startsWith("/" + a!.module_key + "/");
-              return (
-                <Link key={a!.module_key} href={"/" + a!.module_key} onClick={() => setMenu(false)}
+              return (<Fragment key={a!.module_key}>
+                <Link href={"/" + a!.module_key} onClick={() => setMenu(false)}
                   className={`mb-0.5 flex items-center gap-2.5 rounded-[9px] px-3 py-2 font-medium ${on ? "bg-pri-l text-pri-d" : "text-gray2 hover:bg-gray2-l"}`}>
                   <span className="w-[18px] text-center">{ICON[a!.module_key] ?? "•"}</span>
                   {a!.label}
@@ -100,7 +100,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <span className="ml-auto rounded-full bg-err px-1.5 text-[11px] font-semibold text-white">{pending}</span>
                   )}
                 </Link>
-              );
+                {a!.module_key === "paie" && (a!.can_edit || me.role_key === "super_admin") && (
+                  <a href="/paie?tab=avances"
+                    className="mb-0.5 ml-7 flex items-center gap-2 rounded-[9px] px-3 py-1.5 text-[13px] font-medium text-gray2 hover:bg-gray2-l">💵 Avances</a>
+                )}
+              </Fragment>);
             })}
           </div>
         );
