@@ -15,7 +15,7 @@ export default function Avances() {
   const [month, setMonth] = useState(monthStart());
   const [people, setPeople] = useState<Person[]>([]);
   useEffect(() => {
-    supabase.from("profiles").select("id,first_name,last_name").eq("status", "actif").eq("in_payroll", true).order("first_name")
+    supabase.from("profiles").select("id,first_name,last_name").eq("status", "actif").eq("hors_effectif", false).order("first_name")
       .then(({ data }) => setPeople((data as Person[]) ?? []));
   }, []);
   return (
